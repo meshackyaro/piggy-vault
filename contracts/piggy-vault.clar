@@ -1,3 +1,10 @@
+;; Error codes
+(define-constant ERR-INVALID-AMOUNT u100)
+(define-constant ERR-STILL-LOCKED u101)
+(define-constant ERR-NO-DEPOSIT u102)
+(define-constant ERR-UNAUTHORIZED u103)
+(define-constant ERR-INSUFFICIENT-BALANCE u104)
+
 (define-data-var lock-period uint u50) ;; default 50 blocks
 
 (define-map deposits
@@ -12,7 +19,7 @@
 (define-public (deposit (amount uint))
     (let ((sender tx-sender))
         (if (<= amount u0)
-            (err u100) ;; invalid amount
+            (err ERR-INVALID-AMOUNT)
             (begin
                 (try! (stx-transfer? amount sender (as-contract tx-sender)))
                 (map-set deposits { user: sender } {
@@ -30,16 +37,15 @@
     (let ((sender tx-sender))
         (let ((deposit-data (map-get? deposits { user: sender })))
             (match deposit-data
-                data
-                (let (
+                data (let (
                         (user-balance (get amount data))
                         (start (get deposit-block data))
                         (elapsed (- stacks-block-height start))
                     )
                     (if (< elapsed (var-get lock-period))
-                        (err u101) ;; still locked
+                        (err ERR-STILL-LOCKED)
                         (if (> amount user-balance)
-                            (err u104) ;; insufficient balance
+                            (err ERR-INSUFFICIENT-BALANCE)
                             (begin
                                 (try! (as-contract (stx-transfer? amount tx-sender sender)))
                                 (if (is-eq amount user-balance)
@@ -54,7 +60,7 @@
                         )
                     )
                 )
-                (err u102) ;; no deposit found
+                (err ERR-NO-DEPOSIT)
             )
         )
     )
@@ -70,7 +76,7 @@
                 (var-set lock-period new-period)
                 (ok new-period)
             )
-            (err u103) ;; unauthorized
+            (err ERR-UNAUTHORIZED)
         )
     )
 )
