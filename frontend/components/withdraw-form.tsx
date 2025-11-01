@@ -1,6 +1,7 @@
 /**
  * Withdraw Form Component
- * Handles STX withdrawals from the piggy vault with lock period validation
+ * Handles STX withdrawals from StackIt with time-based lock validation
+ * Updated to support the new contract's time-based lock periods
  */
 
 'use client';
@@ -8,6 +9,7 @@
 import { useState, useEffect } from 'react';
 import { useStacks } from '@/hooks/use-stacks';
 import { getUserDeposit, canWithdraw } from '@/lib/contract';
+import { formatRemainingTime, convertOptionToLabel } from '@/lib/lock-options';
 import type { DepositInfo } from '@/lib/contract';
 
 interface WithdrawFormProps {
@@ -31,19 +33,54 @@ export default function WithdrawForm({ onWithdrawSuccess }: WithdrawFormProps) {
     const fetchDepositInfo = async () => {
       setIsLoadingInfo(true);
       try {
-        const deposit = await getUserDeposit(user.address);
-        setDepositInfo(deposit);
+        // Import contract functions dynamically to avoid SSR issues
+        const { getCurrentBlockHeight, getLockExpiry, validateContractConfig } = await import('@/lib/contract');
         
-        // Mock current block height - in production, fetch from Stacks API
-        setCurrentBlock(deposit.depositBlock + 25); // Simulate some blocks have passed
+        // Validate contract configuration before making calls
+        if (!validateContractConfig()) {
+          console.warn('Contract configuration is invalid. Using fallback data.');
+          return;
+        }
+        
+        // Fetch all data in parallel
+        const [deposit, currentBlockHeight, lockExpiry] = await Promise.all([
+          getUserDeposit(user.address),
+          getCurrentBlockHeight(),
+          getLockExpiry(user.address),
+        ]);
+
+        // Calculate lock option from remaining blocks and deposit info
+        let lockOption = 0;
+        if (lockExpiry > 0 && deposit.depositBlock > 0) {
+          const totalLockBlocks = lockExpiry - deposit.depositBlock;
+          // Map block counts back to lock options (approximate)
+          const lockOptionsMap: Record<number, number> = {
+            6: 1, 18: 2, 36: 3, 48: 4, 144: 5, 720: 6, 1008: 7, 
+            2016: 8, 4320: 9, 12960: 10, 25920: 11, 38880: 12, 52560: 13,
+          };
+          lockOption = lockOptionsMap[totalLockBlocks] || 0;
+        }
+
+        setDepositInfo({
+          ...deposit,
+          lockExpiry: lockExpiry || deposit.lockExpiry,
+          lockOption,
+        });
+        setCurrentBlock(currentBlockHeight);
       } catch (err) {
         console.error('Error fetching deposit info:', err);
+        // Optionally set an error state here if needed
       } finally {
         setIsLoadingInfo(false);
       }
     };
 
     fetchDepositInfo();
+    
+    // Set up polling to update data every 30 seconds
+    const interval = setInterval(fetchDepositInfo, 30000);
+    
+    return () => clearInterval(interval);
   }, [isConnected, user]);
 
   // Handle form submission
@@ -68,11 +105,11 @@ export default function WithdrawForm({ onWithdrawSuccess }: WithdrawFormProps) {
       return;
     }
 
-    // Check if lock period has passed
-    const lockPeriod = 50;
-    if (!canWithdraw(depositInfo.depositBlock, currentBlock, lockPeriod)) {
-      const blocksRemaining = lockPeriod - (currentBlock - depositInfo.depositBlock);
-      setError(`Funds are still locked for ${blocksRemaining} more blocks`);
+    // Check if lock period has passed using the new time-based system
+    if (!canWithdraw(depositInfo.lockExpiry || 0, currentBlock)) {
+      const blocksRemaining = Math.max(0, (depositInfo.lockExpiry || 0) - currentBlock);
+      const timeRemaining = formatRemainingTime(blocksRemaining);
+      setError(`Funds are still locked for ${timeRemaining} (${blocksRemaining} blocks)`);
       return;
     }
 
@@ -89,12 +126,22 @@ export default function WithdrawForm({ onWithdrawSuccess }: WithdrawFormProps) {
       // Convert STX to microSTX for the contract call
       const amountMicroStx = stxToMicroStx(withdrawAmount);
 
+      // Import post-condition mode
+      const { PostConditionMode } = await import('@stacks/transactions');
+      const { getStacksNetwork } = await import('@/lib/stacks-config');
+
+      const network = getStacksNetwork();
+
+      console.log('Setting up withdrawal with PostConditionMode.Allow for STX transfers');
+
       // Open contract call with Stacks Connect
       await openContractCall({
         contractAddress: CONTRACT_CONFIG.address,
         contractName: CONTRACT_CONFIG.name,
         functionName: 'withdraw',
         functionArgs: [uintCV(amountMicroStx)],
+        postConditionMode: PostConditionMode.Allow,  // Allow STX transfers without strict checking
+        network: network,
         onFinish: (data) => {
           setSuccess(`Withdrawal transaction submitted! TX ID: ${data.txId}`);
           setAmount('');
@@ -140,9 +187,11 @@ export default function WithdrawForm({ onWithdrawSuccess }: WithdrawFormProps) {
     );
   }
 
-  const lockPeriod = 50;
-  const isUnlocked = canWithdraw(depositInfo.depositBlock, currentBlock, lockPeriod);
-  const blocksRemaining = Math.max(0, lockPeriod - (currentBlock - depositInfo.depositBlock));
+  // Calculate lock status using the new time-based system
+  const isUnlocked = canWithdraw(depositInfo.lockExpiry || 0, currentBlock);
+  const blocksRemaining = Math.max(0, (depositInfo.lockExpiry || 0) - currentBlock);
+  const timeRemaining = formatRemainingTime(blocksRemaining);
+  const lockDurationLabel = depositInfo.lockOption ? convertOptionToLabel(depositInfo.lockOption) : 'Unknown';
 
   return (
     <div className="p-6 bg-white border border-gray-200 rounded-lg shadow-sm">
@@ -158,11 +207,41 @@ export default function WithdrawForm({ onWithdrawSuccess }: WithdrawFormProps) {
       {/* Locked State */}
       {depositInfo.amount > 0 && !isUnlocked && (
         <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <h3 className="text-sm font-medium text-yellow-800 mb-1">Funds Still Locked</h3>
-          <p className="text-sm text-yellow-700">
-            Your funds are locked for {blocksRemaining} more blocks. 
-            You can withdraw after block {depositInfo.depositBlock + lockPeriod}.
-          </p>
+          <h3 className="text-sm font-medium text-yellow-800 mb-2">🔒 Funds Locked</h3>
+          <div className="space-y-3">
+            <div className="text-center">
+              <p className="text-lg font-semibold text-yellow-800">{timeRemaining}</p>
+              <p className="text-sm text-yellow-600">until withdrawal is available</p>
+            </div>
+            <div className="space-y-1">
+              <div className="flex justify-between text-sm text-yellow-700">
+                <span>Lock Duration:</span>
+                <span className="font-medium">{lockDurationLabel}</span>
+              </div>
+              <div className="flex justify-between text-sm text-yellow-700">
+                <span>Progress:</span>
+                <span className="font-medium">{Math.round((1 - blocksRemaining / ((depositInfo.lockExpiry || 0) - depositInfo.depositBlock)) * 100)}% complete</span>
+              </div>
+            </div>
+          </div>
+          
+          {/* Progress Bar */}
+          <div className="mt-3">
+            <div className="w-full bg-yellow-200 rounded-full h-2">
+              <div 
+                className="bg-yellow-500 h-2 rounded-full transition-all duration-300"
+                style={{
+                  width: `${Math.max(0, Math.min(100, 
+                    ((currentBlock - depositInfo.depositBlock) / ((depositInfo.lockExpiry || 0) - depositInfo.depositBlock)) * 100
+                  ))}%`
+                }}
+              ></div>
+            </div>
+            <div className="flex justify-between text-xs text-yellow-700 mt-1">
+              <span>Deposited</span>
+              <span>Unlocks</span>
+            </div>
+          </div>
         </div>
       )}
 
@@ -240,16 +319,42 @@ export default function WithdrawForm({ onWithdrawSuccess }: WithdrawFormProps) {
         </div>
       )}
 
-      {/* Info Box */}
+      {/* Info Box - User-friendly time-based information */}
       {depositInfo.amount > 0 && (
         <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-          <h4 className="text-sm font-medium text-blue-800 mb-1">Withdrawal Info:</h4>
-          <ul className="text-xs text-blue-700 space-y-1">
-            <li>• Lock period: {lockPeriod} blocks</li>
-            <li>• Deposit block: {depositInfo.depositBlock}</li>
-            <li>• Current block: {currentBlock}</li>
-            <li>• Status: {isUnlocked ? 'Unlocked ✓' : `Locked for ${blocksRemaining} blocks`}</li>
-          </ul>
+          <h4 className="text-sm font-medium text-blue-800 mb-2">Your Deposit Info:</h4>
+          <div className="space-y-2 text-sm text-blue-700">
+            <div className="flex justify-between">
+              <span className="font-medium">Lock Duration:</span>
+              <span>{lockDurationLabel}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-medium">Status:</span>
+              <span className={isUnlocked ? 'text-green-600 font-medium' : 'text-yellow-600 font-medium'}>
+                {isUnlocked ? '✓ Ready to withdraw' : `🔒 ${timeRemaining} remaining`}
+              </span>
+            </div>
+            {!isUnlocked && (
+              <div className="flex justify-between">
+                <span className="font-medium">Progress:</span>
+                <span>{Math.round((1 - blocksRemaining / ((depositInfo.lockExpiry || 0) - depositInfo.depositBlock)) * 100)}% complete</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span className="font-medium">Time Elapsed:</span>
+              <span>{formatRemainingTime(currentBlock - depositInfo.depositBlock)}</span>
+            </div>
+          </div>
+          
+          {/* Optional technical details */}
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-600 select-none">
+              Blockchain details
+            </summary>
+            <div className="mt-1 text-xs text-gray-500 space-y-1">
+              <div>Blocks: {currentBlock - depositInfo.depositBlock} / {(depositInfo.lockExpiry || 0) - depositInfo.depositBlock}</div>
+            </div>
+          </details>
         </div>
       )}
     </div>

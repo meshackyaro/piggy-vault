@@ -36,7 +36,7 @@ export default function DepositPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Deposit STX</h1>
         <p className="text-lg text-gray-600">
-          Add STX to your savings vault with a 50-block lock period
+          Add STX to your savings vault with flexible time-based lock periods
         </p>
       </div>
 
@@ -55,24 +55,33 @@ export default function DepositPage() {
         <div className="space-y-6">
           {/* Current Vault Status */}
           {isConnected && (
-            <div key={refreshKey}>
-              <VaultInfo />
-            </div>
+            <VaultInfo 
+              refreshTrigger={refreshKey}
+              onRefresh={() => console.log('Vault refreshed after deposit')}
+            />
           )}
 
           {/* Deposit Guidelines */}
           <div className="p-6 bg-yellow-50 border border-yellow-200 rounded-lg">
             <h3 className="text-lg font-semibold text-yellow-900 mb-3">
-              ⚠️ Important Guidelines
+              ⚠️ Lock Period Guidelines
             </h3>
             <ul className="text-sm text-yellow-800 space-y-2">
               <li className="flex items-start">
                 <span className="font-semibold mr-2">•</span>
-                Deposits are locked for exactly 50 blocks (~8.3 hours)
+                Choose from 13 predefined lock periods (1 hour to 1 year)
               </li>
               <li className="flex items-start">
                 <span className="font-semibold mr-2">•</span>
-                You cannot withdraw until the lock period expires
+                Longer locks provide better savings discipline
+              </li>
+              <li className="flex items-start">
+                <span className="font-semibold mr-2">•</span>
+                You cannot withdraw until your chosen period expires
+              </li>
+              <li className="flex items-start">
+                <span className="font-semibold mr-2">•</span>
+                New deposits will overwrite previous ones
               </li>
               <li className="flex items-start">
                 <span className="font-semibold mr-2">•</span>
@@ -80,13 +89,53 @@ export default function DepositPage() {
               </li>
               <li className="flex items-start">
                 <span className="font-semibold mr-2">•</span>
-                Multiple deposits will reset the lock period
-              </li>
-              <li className="flex items-start">
-                <span className="font-semibold mr-2">•</span>
                 Always keep some STX for transaction fees
               </li>
             </ul>
+          </div>
+
+          {/* Lock Period Options */}
+          <div className="p-6 bg-blue-50 border border-blue-200 rounded-lg">
+            <h3 className="text-lg font-semibold text-blue-900 mb-3">
+              ⏰ Available Lock Periods
+            </h3>
+            <div className="grid grid-cols-2 gap-3 text-sm text-blue-800">
+              <div>
+                <h4 className="font-semibold mb-2">Short-term (Hours)</h4>
+                <ul className="space-y-1">
+                  <li>• 1 hour (6 blocks)</li>
+                  <li>• 3 hours (18 blocks)</li>
+                  <li>• 6 hours (36 blocks)</li>
+                  <li>• 8 hours (48 blocks)</li>
+                </ul>
+              </div>
+              <div>
+                <h4 className="font-semibold mb-2">Medium-term (Days/Weeks)</h4>
+                <ul className="space-y-1">
+                  <li>• 1 day (144 blocks)</li>
+                  <li>• 5 days (720 blocks)</li>
+                  <li>• 1 week (1,008 blocks)</li>
+                  <li>• 2 weeks (2,016 blocks)</li>
+                </ul>
+              </div>
+              <div className="col-span-2">
+                <h4 className="font-semibold mb-2">Long-term (Months/Year)</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <ul className="space-y-1">
+                    <li>• 1 month (4,320 blocks)</li>
+                    <li>• 3 months (12,960 blocks)</li>
+                  </ul>
+                  <ul className="space-y-1">
+                    <li>• 6 months (25,920 blocks)</li>
+                    <li>• 9 months (38,880 blocks)</li>
+                    <li>• 1 year (52,560 blocks)</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            <p className="text-xs text-blue-600 mt-3 italic">
+              * Block counts based on ~10 minutes per Stacks block
+            </p>
           </div>
 
           {/* Security Notice */}

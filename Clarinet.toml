@@ -1,12 +1,12 @@
 [project]
-name = 'piggy-vault'
+name = 'StackIt'
 description = ''
 authors = []
 telemetry = true
 cache_dir = './.cache'
 requirements = []
-[contracts.piggy-vault]
-path = 'contracts/piggy-vault.clar'
+[contracts.StackIt]
+path = 'contracts/StackIt.clar'
 clarity_version = 3
 epoch = 'latest'
 [repl.analysis]

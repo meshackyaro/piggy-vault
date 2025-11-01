@@ -19,9 +19,9 @@ export default function Navbar() {
           <div className="flex items-center">
             <Link href="/" className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">PV</span>
+                <span className="text-white font-bold text-sm">SI</span>
               </div>
-              <span className="text-xl font-semibold text-gray-900">Piggy Vault</span>
+              <span className="text-xl font-semibold text-gray-900">StackIt</span>
             </Link>
           </div>
 
@@ -44,6 +44,12 @@ export default function Navbar() {
               className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
             >
               Withdraw
+            </Link>
+            <Link 
+              href="/groups" 
+              className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+            >
+              Groups
             </Link>
           </div>
 

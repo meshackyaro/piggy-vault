@@ -13,7 +13,7 @@ const appConfig = new AppConfig(['store_write', 'publish_data']);
 
 export interface StacksUser {
   address: string;
-  profile?: any;
+  profile?: Record<string, unknown>;
 }
 
 export const useStacks = () => {
@@ -73,7 +73,7 @@ export const useStacks = () => {
       
       authenticate({
         appDetails: {
-          name: 'Piggy Vault',
+          name: 'StackIt',
           icon: typeof window !== 'undefined' ? window.location.origin + '/next.svg' : '/next.svg',
         },
         redirectTo: '/',
@@ -99,7 +99,7 @@ export const useStacks = () => {
       });
     } catch (error) {
       console.error('Error connecting wallet:', error);
-      setError(`Failed to connect wallet: ${error.message}`);
+      setError(`Failed to connect wallet: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }, [userSession]);
 

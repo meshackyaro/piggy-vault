@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Piggy Vault - Stacks Savings dApp",
+  title: "StackIt - Stacks Savings dApp",
   description: "A decentralized savings vault built on Stacks blockchain with time-locked deposits",
 };
 

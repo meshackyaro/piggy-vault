@@ -2,13 +2,15 @@
 
 /**
  * Development Setup Script
- * Helps developers get started with the Piggy Vault frontend
+ * Helps developers get started with the StackIt frontend
  */
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const fs = require("fs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const path = require("path");
 
-console.log("🐷 Piggy Vault Frontend Setup\n");
+console.log("📚 StackIt Frontend Setup\n");
 
 // Check if .env.local exists
 const envPath = path.join(__dirname, "..", ".env.local");
@@ -17,12 +19,18 @@ if (!fs.existsSync(envPath)) {
   console.log("Creating default .env.local file...\n");
 
   const defaultEnv = `# Stacks Network Configuration
+# Reset for fresh deployment - update these values after deploying the contract
 NEXT_PUBLIC_NETWORK=testnet
-NEXT_PUBLIC_CONTRACT_ADDRESS=ST3QGZ6VKAQVFT5YFXWMDQGSXK1NVAH8DJ8S7M5SG
-NEXT_PUBLIC_CONTRACT_NAME=piggy-vault
+NEXT_PUBLIC_CONTRACT_ADDRESS=
+NEXT_PUBLIC_CONTRACT_NAME=StackIt
 
 # Network URLs
-NEXT_PUBLIC_STACKS_API_URL=https://api.testnet.hiro.so`;
+NEXT_PUBLIC_STACKS_API_URL=https://api.testnet.hiro.so
+
+# Deployment Instructions:
+# 1. Deploy the contract using: clarinet deployments apply --testnet
+# 2. Update NEXT_PUBLIC_CONTRACT_ADDRESS with the deployed contract address
+# 3. Ensure NEXT_PUBLIC_NETWORK matches your deployment target (testnet/mainnet)`;
 
   fs.writeFileSync(envPath, defaultEnv);
   console.log("✅ Created .env.local with default testnet configuration");
@@ -40,13 +48,14 @@ if (!fs.existsSync(nodeModulesPath)) {
 }
 
 console.log("\n📋 Next Steps:");
-console.log("1. Contract already deployed on testnet");
-console.log("2. Start frontend: npm run dev");
-console.log("3. Open http://localhost:3000");
+console.log("1. Deploy contract: clarinet deployments apply --testnet");
+console.log("2. Update .env.local with deployed contract address");
+console.log("3. Start frontend: npm run dev");
+console.log("4. Open http://localhost:3000");
 
 console.log("\n🔧 Configuration:");
 console.log("- Network: testnet (api.testnet.hiro.so)");
-console.log("- Contract: piggy-vault");
+console.log("- Contract: StackIt (needs deployment)");
 console.log("- Frontend: localhost:3000");
 
 console.log("\n💡 Tips:");

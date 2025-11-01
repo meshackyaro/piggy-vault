@@ -68,19 +68,23 @@ export default function WithdrawPage() {
             <ul className="text-sm text-blue-800 space-y-2">
               <li className="flex items-start">
                 <span className="font-semibold mr-2">•</span>
-                Funds must be unlocked (50 blocks passed since deposit)
+                Funds must be unlocked (chosen lock period must expire)
               </li>
               <li className="flex items-start">
                 <span className="font-semibold mr-2">•</span>
-                You can withdraw partial or full amounts
+                You can withdraw partial or full amounts when unlocked
               </li>
               <li className="flex items-start">
                 <span className="font-semibold mr-2">•</span>
-                Withdrawals are processed immediately when unlocked
+                Withdrawals are processed immediately when available
               </li>
               <li className="flex items-start">
                 <span className="font-semibold mr-2">•</span>
                 Transaction fees are deducted from your wallet balance
+              </li>
+              <li className="flex items-start">
+                <span className="font-semibold mr-2">•</span>
+                Check vault info for exact unlock time remaining
               </li>
             </ul>
           </div>
@@ -88,34 +92,47 @@ export default function WithdrawPage() {
           {/* Lock Period Info */}
           <div className="p-6 bg-purple-50 border border-purple-200 rounded-lg">
             <h3 className="text-lg font-semibold text-purple-900 mb-3">
-              ⏰ Understanding Lock Periods
+              ⏰ Understanding Time-Based Locks
             </h3>
             <div className="text-sm text-purple-800 space-y-2">
               <p>
-                <span className="font-semibold">Lock Duration:</span> 50 blocks (~8.3 hours)
+                <span className="font-semibold">Lock Options:</span> 13 predefined periods (1 hour to 1 year)
               </p>
               <p>
-                <span className="font-semibold">Block Time:</span> ~10 minutes average
+                <span className="font-semibold">Block Time:</span> ~10 minutes average on Stacks
               </p>
               <p>
-                <span className="font-semibold">Purpose:</span> Encourages long-term saving habits
+                <span className="font-semibold">Purpose:</span> Flexible savings discipline for any goal
               </p>
-              <p className="text-xs text-purple-600 mt-3">
-                The lock period starts from your most recent deposit block height.
-              </p>
+              <div className="mt-3 p-2 bg-purple-100 rounded text-xs">
+                <p className="font-semibold mb-1">Examples:</p>
+                <p>• 1 hour = 6 blocks (quick save)</p>
+                <p>• 1 day = 144 blocks (daily discipline)</p>
+                <p>• 1 month = 4,320 blocks (monthly goals)</p>
+                <p>• 1 year = 52,560 blocks (long-term commitment)</p>
+              </div>
             </div>
           </div>
 
           {/* Emergency Notice */}
           <div className="p-6 bg-red-50 border border-red-200 rounded-lg">
             <h3 className="text-lg font-semibold text-red-900 mb-3">
-              🚨 Emergency Access
+              🚨 Important: No Emergency Access
             </h3>
-            <p className="text-sm text-red-800">
-              There is no emergency withdrawal feature. Funds are locked by the smart contract 
-              until the full lock period expires. Plan your deposits accordingly and only 
-              deposit funds you won't need immediately.
-            </p>
+            <div className="text-sm text-red-800 space-y-2">
+              <p>
+                There is no emergency withdrawal feature. Funds are locked by the smart contract 
+                until your chosen lock period expires completely.
+              </p>
+              <p className="font-semibold">
+                Choose your lock period carefully:
+              </p>
+              <ul className="ml-4 space-y-1">
+                <li>• Only deposit funds you won&apos;t need during the lock period</li>
+                <li>• Consider shorter periods if you&apos;re unsure about your needs</li>
+                <li>• Remember that new deposits overwrite previous ones</li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>

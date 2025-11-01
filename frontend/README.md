@@ -1,6 +1,6 @@
-# Piggy Vault Frontend
+# StackIt Frontend
 
-A Next.js frontend for the Piggy Vault Clarity smart contract - a decentralized savings vault with time-locked deposits on the Stacks blockchain.
+A Next.js frontend for the StackIt Clarity smart contract - a decentralized savings vault with time-locked deposits on the Stacks blockchain.
 
 ## 🏗️ Architecture Overview
 
@@ -69,11 +69,11 @@ The frontend handles all Clarity contract errors:
 2. **Configure environment:**
 
    ```bash
-   # .env.local is already configured for testnet
-   # Current configuration:
+   # .env.local needs to be configured after contract deployment
+   # Update these values after deploying the contract:
    NEXT_PUBLIC_NETWORK=testnet
-   NEXT_PUBLIC_CONTRACT_ADDRESS=ST3QGZ6VKAQVFT5YFXWMDQGSXK1NVAH8DJ8S7M5SG
-   NEXT_PUBLIC_CONTRACT_NAME=piggy-vault
+   NEXT_PUBLIC_CONTRACT_ADDRESS=  # Set after deployment
+   NEXT_PUBLIC_CONTRACT_NAME=StackIt
    NEXT_PUBLIC_STACKS_API_URL=https://api.testnet.hiro.so
    ```
 
@@ -88,7 +88,14 @@ The frontend handles all Clarity contract errors:
 
 ### Contract Deployment
 
-Ensure the piggy-vault contract is deployed to your target network before using the frontend.
+**Important**: Deploy the contract first before using the frontend:
+
+```bash
+# From project root directory
+clarinet deployments apply --testnet
+```
+
+Then update `.env.local` with the deployed contract address.
 
 ## 🔧 Key Features
 
@@ -164,8 +171,11 @@ Ensure the piggy-vault contract is deployed to your target network before using 
 ### Development
 
 ```bash
-# Contract is already deployed on testnet
-# Start frontend (in frontend directory)
+# Deploy contract first (from project root)
+clarinet deployments apply --testnet
+
+# Update .env.local with deployed contract address
+# Then start frontend (in frontend directory)
 npm run dev
 ```
 
@@ -248,4 +258,4 @@ The app can be deployed to any platform supporting Next.js:
 
 ## 📄 License
 
-This project is part of the Piggy Vault dApp and follows the same license as the main project.
+This project is part of the StackIt dApp and follows the same license as the main project.
