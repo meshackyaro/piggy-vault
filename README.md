@@ -1,4 +1,4 @@
-# StackIt - Decentralized Savings Vault
+# SafeStack - Decentralized Savings Vault
 
 A Stacks blockchain-based savings application with time-locked deposits and group savings functionality.
 
@@ -29,7 +29,7 @@ A Stacks blockchain-based savings application with time-locked deposits and grou
 
 ```
 ├── contracts/
-│   └── StackIt.clar           # Main smart contract
+│   └── SafeStack.clar           # Main smart contract
 ├── frontend/                  # Next.js frontend application
 │   ├── app/                   # App Router pages
 │   ├── components/            # React components
@@ -51,7 +51,7 @@ A Stacks blockchain-based savings application with time-locked deposits and grou
 
 ```bash
 git clone <repository-url>
-cd StackIt
+cd SafeStack
 npm install
 cd frontend && npm install
 ```
@@ -69,7 +69,7 @@ Update `frontend/.env.local` with your deployed contract address:
 
 ```bash
 NEXT_PUBLIC_CONTRACT_ADDRESS=<YOUR_DEPLOYED_CONTRACT_ADDRESS>
-NEXT_PUBLIC_CONTRACT_NAME=StackIt
+NEXT_PUBLIC_CONTRACT_NAME=SafeStack
 NEXT_PUBLIC_NETWORK=testnet
 ```
 
@@ -137,7 +137,7 @@ clarinet deployments apply --devnet
 
 ### Testnet
 
-- Contract: `ST3QGZ6VKAQVFT5YFXWMDQGSXK1NVAH8DJ8S7M5SG.StackIt`
+- Contract: `<DEPLOYED_ADDRESS>.SafeStack`
 - Network: Stacks Testnet
 - Explorer: [Stacks Explorer](https://explorer.stacks.co/?chain=testnet)
 
@@ -145,8 +145,8 @@ clarinet deployments apply --devnet
 
 ```bash
 NEXT_PUBLIC_NETWORK=testnet
-NEXT_PUBLIC_CONTRACT_ADDRESS=ST3QGZ6VKAQVFT5YFXWMDQGSXK1NVAH8DJ8S7M5SG
-NEXT_PUBLIC_CONTRACT_NAME=StackIt
+NEXT_PUBLIC_CONTRACT_ADDRESS=<DEPLOYED_CONTRACT_ADDRESS>
+NEXT_PUBLIC_CONTRACT_NAME=SafeStack
 NEXT_PUBLIC_STACKS_API_URL=https://api.testnet.hiro.so
 ```
 

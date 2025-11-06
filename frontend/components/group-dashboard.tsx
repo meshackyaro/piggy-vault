@@ -6,7 +6,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useStacks } from '@/hooks/use-stacks';
+import { useWallet } from '@/contexts/wallet-context';
 import { useGroupVault } from '@/hooks/use-group-vault';
 import { getLockDurationOptions } from '@/lib/lock-options';
 
@@ -26,14 +26,18 @@ interface GroupWithUserData {
   isUnlocked: boolean;
 }
 
-export default function GroupDashboard() {
-  const { user, isConnected } = useStacks();
+interface GroupDashboardProps {
+  onCreateGroup?: () => void;
+  onJoinGroup?: () => void;
+}
+
+export default function GroupDashboard({ onCreateGroup, onJoinGroup }: GroupDashboardProps) {
+  const { user, isConnected } = useWallet();
   const { 
     fetchAllGroupsWithUserData, 
     groupDeposit, 
     groupWithdraw, 
     startGroupLock,
-    isLoading: hookLoading,
     error: hookError 
   } = useGroupVault();
   
@@ -50,7 +54,7 @@ export default function GroupDashboard() {
   // Get lock duration options for display
   const lockOptions = getLockDurationOptions();
 
-  // Load user's groups
+  // Load user's groups (only groups where user is a member)
   useEffect(() => {
     const loadGroups = async () => {
       if (!user) {
@@ -195,8 +199,8 @@ export default function GroupDashboard() {
 
   if (!isConnected) {
     return (
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">My Groups</h2>
+      <div className="bg-gray-800 rounded-lg shadow-md p-6">
+        <h2 className="text-2xl font-bold text-white mb-6">My Groups</h2>
         <div className="text-center py-8">
           <p className="text-gray-500">Please connect your wallet to view your groups</p>
         </div>
@@ -204,15 +208,79 @@ export default function GroupDashboard() {
     );
   }
 
+  // Calculate total balance across all groups
+  const totalBalance = groups.reduce((sum, group) => sum + group.userBalance, 0);
+  const activeGroups = groups.filter(group => group.locked && !group.isUnlocked).length;
+  const completedGroups = groups.filter(group => group.isUnlocked).length;
+
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">My Groups</h2>
+    <div className="space-y-6">
+      {/* Header with Total Balance */}
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg shadow-lg p-6 text-white">
+        <div className="flex justify-between items-center">
+          <div>
+            <p className="text-sm text-blue-100">Total Balance</p>
+            <p className="text-2xl font-bold text-white">{totalBalance.toFixed(6)} STX</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Summary Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="bg-blue-50 rounded-lg p-4">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <span className="text-2xl">👥</span>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm font-medium text-blue-800">Total Groups</p>
+              <p className="text-lg font-semibold text-blue-900">{groups.length}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-green-50 rounded-lg p-4">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <span className="text-2xl">🔄</span>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm font-medium text-green-800">Active Groups</p>
+              <p className="text-lg font-semibold text-green-900">{activeGroups}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-yellow-50 rounded-lg p-4">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <span className="text-2xl">✅</span>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm font-medium text-yellow-800">Completed</p>
+              <p className="text-lg font-semibold text-yellow-900">{completedGroups}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-purple-50 rounded-lg p-4">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <span className="text-2xl">💰</span>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm font-medium text-purple-800">Total Saved</p>
+              <p className="text-lg font-semibold text-purple-900">{totalBalance.toFixed(2)} STX</p>
+            </div>
+          </div>
+        </div>
+      </div>
       
       {/* Loading State */}
       {isLoading && (
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="ml-2 text-gray-600">Loading your groups...</span>
+          <span className="ml-2 text-gray-400">Loading your groups...</span>
         </div>
       )}
 
@@ -248,17 +316,57 @@ export default function GroupDashboard() {
       {!isLoading && (
         <>
           {groups.length === 0 ? (
-            <div className="text-center py-8">
-              <div className="text-gray-500 mb-4">
-                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
+            <div>
+              {/* Empty State Message */}
+              <div className="text-center py-8 bg-gray-800 rounded-lg">
+                <div className="text-gray-500 mb-4">
+                  <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-medium text-white mb-2">Start Your Group Savings Journey</h3>
+                <p className="text-gray-500 mb-6">You haven&apos;t joined any savings groups yet. Create your first group or join an existing one to start saving together!</p>
+                
+                {/* Quick Action Buttons */}
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                  {onCreateGroup && (
+                    <button
+                      onClick={onCreateGroup}
+                      className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
+                      <span className="mr-2">➕</span>
+                      Create Your First Group
+                    </button>
+                  )}
+                  {onJoinGroup && (
+                    <button
+                      onClick={onJoinGroup}
+                      className="inline-flex items-center px-6 py-3 border border-gray-600 text-base font-medium rounded-md shadow-sm text-gray-300 dark:text-gray-200 bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:focus:ring-offset-gray-800"
+                    >
+                      <span className="mr-2">🤝</span>
+                      Join an Existing Group
+                    </button>
+                  )}
+                </div>
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No Groups Yet</h3>
-              <p className="text-gray-500">You haven't joined any savings groups yet.</p>
             </div>
           ) : (
             <div className="space-y-6">
+              {/* Welcome Message */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <span className="text-2xl">👋</span>
+                  </div>
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-blue-800">Welcome to your Group Savings Dashboard</h3>
+                    <div className="mt-1 text-sm text-blue-700">
+                      <p>Here you can manage all your group memberships, make deposits, and track your savings progress.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {groups.map((group) => {
                 const isCreator = user && group.creator === user.address;
                 const canStartLock = isCreator && !group.locked && !group.threshold;
@@ -270,7 +378,7 @@ export default function GroupDashboard() {
                     {/* Group Header */}
                     <div className="flex justify-between items-start mb-4">
                       <div>
-                        <h3 className="text-xl font-semibold text-gray-900">{group.name}</h3>
+                        <h3 className="text-xl font-semibold text-white">{group.name}</h3>
                         <p className="text-sm text-gray-500">Group ID: {group.groupId}</p>
                         {isCreator && (
                           <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 mt-1">
@@ -284,7 +392,7 @@ export default function GroupDashboard() {
                             ? group.isUnlocked 
                               ? 'bg-green-100 text-green-800' 
                               : 'bg-yellow-100 text-yellow-800'
-                            : 'bg-gray-100 text-gray-800'
+                            : 'bg-gray-700 text-gray-200'
                         }`}>
                           {group.locked 
                             ? group.isUnlocked 
@@ -300,22 +408,22 @@ export default function GroupDashboard() {
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                       <div>
                         <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Your Balance</p>
-                        <p className="text-lg font-semibold text-gray-900">{group.userBalance.toFixed(6)} STX</p>
+                        <p className="text-lg font-semibold text-white">{group.userBalance.toFixed(6)} STX</p>
                       </div>
                       <div>
                         <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Lock Duration</p>
-                        <p className="text-sm text-gray-900">{getLockDurationLabel(group.duration)}</p>
+                        <p className="text-sm text-white">{getLockDurationLabel(group.duration)}</p>
                       </div>
                       <div>
                         <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Members</p>
-                        <p className="text-sm text-gray-900">
+                        <p className="text-sm text-white">
                           {group.memberCount}
                           {group.threshold ? ` / ${group.threshold}` : ' (unlimited)'}
                         </p>
                       </div>
                       <div>
                         <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Time Remaining</p>
-                        <p className="text-sm text-gray-900">{formatTimeRemaining(group.remainingBlocks)}</p>
+                        <p className="text-sm text-white">{formatTimeRemaining(group.remainingBlocks)}</p>
                       </div>
                     </div>
 
@@ -360,10 +468,15 @@ export default function GroupDashboard() {
                         </div>
                       )}
 
-                      {/* Deposit Section */}
-                      {canDeposit && (
-                        <div className="bg-gray-50 rounded-lg p-4">
-                          <h4 className="text-sm font-medium text-gray-900 mb-3">Deposit STX</h4>
+                      {/* Deposit Section - Members can always deposit, even when locked */}
+                      {group.isMember && (
+                        <div className="bg-gray-800 rounded-lg p-4">
+                          <h4 className="text-sm font-medium text-white mb-3">
+                            Add to Your Savings
+                            {!group.locked && (
+                              <span className="ml-2 text-xs text-blue-600">(Group not started yet)</span>
+                            )}
+                          </h4>
                           <div className="flex space-x-3">
                             <input
                               type="number"
@@ -382,13 +495,16 @@ export default function GroupDashboard() {
                               {actionLoading[`deposit-${group.groupId}`] ? 'Depositing...' : 'Deposit'}
                             </button>
                           </div>
+                          <p className="text-xs text-gray-500 mt-2">
+                            As a member, you can add funds anytime to increase your savings
+                          </p>
                         </div>
                       )}
 
                       {/* Withdraw Section */}
                       {canWithdraw && (
-                        <div className="bg-gray-50 rounded-lg p-4">
-                          <h4 className="text-sm font-medium text-gray-900 mb-3">Withdraw STX</h4>
+                        <div className="bg-gray-800 rounded-lg p-4">
+                          <h4 className="text-sm font-medium text-white mb-3">Withdraw STX</h4>
                           <div className="flex space-x-3">
                             <input
                               type="number"
@@ -413,15 +529,31 @@ export default function GroupDashboard() {
 
                       {/* Status Messages */}
                       {!group.locked && !canStartLock && (
-                        <p className="text-sm text-gray-500 italic">
-                          Waiting for the group to start or reach member threshold...
-                        </p>
+                        <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                          <p className="text-sm text-blue-800">
+                            <strong>Waiting to Start:</strong> {group.threshold 
+                              ? `Group will auto-start when it reaches ${group.threshold} members (currently ${group.memberCount}).`
+                              : 'Waiting for the creator to manually start the group.'
+                            }
+                          </p>
+                        </div>
                       )}
                       
-                      {group.locked && !group.isUnlocked && !canDeposit && (
-                        <p className="text-sm text-gray-500 italic">
-                          Group is locked. You can deposit funds and wait for the lock period to expire.
-                        </p>
+                      {group.locked && !group.isUnlocked && (
+                        <div className="bg-green-50 border border-green-200 rounded-md p-3">
+                          <p className="text-sm text-green-800">
+                            <strong>Active Savings Period:</strong> The group is now active! You can make deposits to build your savings. 
+                            Funds will be locked until {formatTimeRemaining(group.remainingBlocks)} remaining.
+                          </p>
+                        </div>
+                      )}
+
+                      {group.isUnlocked && (
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                          <p className="text-sm text-yellow-800">
+                            <strong>Lock Expired:</strong> The savings period has ended! You can now withdraw your contributions.
+                          </p>
+                        </div>
                       )}
                     </div>
                   </div>

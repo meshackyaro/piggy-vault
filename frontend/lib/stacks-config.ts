@@ -1,6 +1,6 @@
 /**
  * Stacks Network Configuration
- * Centralizes network settings and contract information for the StackIt dApp
+ * Centralizes network settings and contract information for the SafeStack dApp
  */
 
 import { 

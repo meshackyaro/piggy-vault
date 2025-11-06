@@ -64,8 +64,8 @@ plan:
     - id: 0
       transactions:
         - emulated-contract-publish:
-            contract-name: StackIt
+            contract-name: SafeStack
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            path: contracts/StackIt.clar
+            path: contracts/SafeStack.clar
             clarity-version: 3
       epoch: "3.2"

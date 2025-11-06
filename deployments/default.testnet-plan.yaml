@@ -9,10 +9,10 @@ plan:
     - id: 0
       transactions:
         - contract-publish:
-            contract-name: StackIt
-            expected-sender: ST3QGZ6VKAQVFT5YFXWMDQGSXK1NVAH8DJ8S7M5SG
+            contract-name: SafeStack
+            expected-sender:
             cost: 208290
-            path: contracts/StackIt.clar
+            path: contracts/SafeStack.clar
             anchor-block-only: true
             clarity-version: 3
       epoch: "3.2"

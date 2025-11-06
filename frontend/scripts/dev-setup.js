@@ -2,7 +2,7 @@
 
 /**
  * Development Setup Script
- * Helps developers get started with the StackIt frontend
+ * Helps developers get started with the SafeStack frontend
  */
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports

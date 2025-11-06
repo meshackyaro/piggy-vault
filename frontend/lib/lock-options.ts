@@ -1,8 +1,12 @@
 /**
- * Lock Duration Options for StackIt
+ * Lock Duration Options for SafeStack
  * Maps user-friendly time periods to contract lock option values
  * Maintains parity with the smart contract's lock duration constants
  */
+
+// Block time constants (legacy - use network-timing.ts for accurate values)
+export const STACKS_BLOCK_TIME_MINUTES = 10; // Average Stacks block time in minutes (mainnet)
+export const STACKS_BLOCK_TIME_SECONDS = STACKS_BLOCK_TIME_MINUTES * 60;
 
 // Lock option constants that match the smart contract
 export const LOCK_OPTIONS = {
@@ -168,15 +172,22 @@ export const getLockDurationBlocks = (optionValue: number): number => {
 };
 
 /**
- * Calculate approximate time remaining based on blocks
+ * Calculate approximate time remaining based on blocks (legacy version)
  * @param remainingBlocks - Number of blocks remaining
  * @returns Human-readable time remaining string
+ * @deprecated Use formatRemainingTimeAccurate from network-timing.ts for accurate timing
  */
 export const formatRemainingTime = (remainingBlocks: number): string => {
   if (remainingBlocks <= 0) return 'Unlocked';
   
-  // Convert blocks to minutes (10 minutes per block)
-  const totalMinutes = remainingBlocks * 10;
+  // Account for transaction mining: if only 1 block remains, 
+  // a withdrawal transaction will likely succeed when mined
+  if (remainingBlocks === 1) {
+    return 'Unlocking soon (next block)';
+  }
+  
+  // Convert blocks to minutes using the constant (may be inaccurate on testnet)
+  const totalMinutes = remainingBlocks * STACKS_BLOCK_TIME_MINUTES;
   
   if (totalMinutes < 60) {
     return `${totalMinutes} minutes`;
@@ -221,8 +232,8 @@ export const getApproximateDate = (blockHeight: number, currentBlock: number): s
   // Calculate the difference in blocks
   const blockDifference = blockHeight - currentBlock;
   
-  // Convert blocks to minutes (10 minutes per block)
-  const minutesDifference = blockDifference * 10;
+  // Convert blocks to minutes using the constant
+  const minutesDifference = blockDifference * STACKS_BLOCK_TIME_MINUTES;
   
   // Calculate the approximate date
   const now = new Date();

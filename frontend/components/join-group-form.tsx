@@ -1,12 +1,12 @@
 /**
  * Join Group Form Component
- * Displays available open groups and allows users to join them
+ * Displays available open groups and allows users to join them by depositing
  */
 
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useStacks } from '@/hooks/use-stacks';
+import { useWallet } from '@/contexts/wallet-context';
 import { useGroupVault } from '@/hooks/use-group-vault';
 import { getLockDurationOptions } from '@/lib/lock-options';
 import type { GroupInfo } from '@/lib/group-contract';
@@ -16,14 +16,17 @@ interface JoinGroupFormProps {
 }
 
 export default function JoinGroupForm({ onGroupJoined }: JoinGroupFormProps) {
-  const { user, isConnected } = useStacks();
-  const { joinGroup, fetchOpenGroups, isGroupMember } = useGroupVault();
+  const { user, isConnected } = useWallet();
+  const { joinGroupWithDeposit, fetchOpenGroups, isGroupMember } = useGroupVault();
   const [openGroups, setOpenGroups] = useState<GroupInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingGroups, setIsLoadingGroups] = useState(true);
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
   const [joiningGroupId, setJoiningGroupId] = useState<number | null>(null);
+  const [depositAmounts, setDepositAmounts] = useState<{ [key: number]: string }>({});
+  const [showDepositForm, setShowDepositForm] = useState<{ [key: number]: boolean }>({});
+
 
   // Get lock duration options for display
   const lockOptions = getLockDurationOptions();
@@ -59,8 +62,14 @@ export default function JoinGroupForm({ onGroupJoined }: JoinGroupFormProps) {
     loadOpenGroups();
   }, [user, fetchOpenGroups, isGroupMember]);
 
-  // Handle joining a group
-  const handleJoinGroup = async (groupId: number) => {
+  // Handle joining a group with initial deposit
+  const handleJoinGroupWithDeposit = async (groupId: number) => {
+    const amount = depositAmounts[groupId];
+    if (!amount || parseFloat(amount) <= 0) {
+      setError('Please enter a valid deposit amount');
+      return;
+    }
+
     if (!isConnected || !user) {
       setError('Please connect your wallet first');
       return;
@@ -72,9 +81,16 @@ export default function JoinGroupForm({ onGroupJoined }: JoinGroupFormProps) {
     setSuccess('');
 
     try {
-      const txId = await joinGroup(groupId);
+      const joinTxId = await joinGroupWithDeposit({
+        groupId,
+        amount: parseFloat(amount),
+      });
       
-      setSuccess(`Successfully joined group! Transaction ID: ${txId}`);
+      setSuccess(`Successfully joined group with ${amount} STX deposit! Transaction ID: ${joinTxId}`);
+      
+      // Clear form data
+      setDepositAmounts(prev => ({ ...prev, [groupId]: '' }));
+      setShowDepositForm(prev => ({ ...prev, [groupId]: false }));
       
       // Remove the joined group from the list
       setOpenGroups(prev => prev.filter(group => group.groupId !== groupId));
@@ -120,14 +136,25 @@ export default function JoinGroupForm({ onGroupJoined }: JoinGroupFormProps) {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Join Savings Group</h2>
+    <div className="bg-gray-800 rounded-lg shadow-md p-6">
+      <h2 className="text-2xl font-bold text-white mb-6">Join Savings Group</h2>
+      
+      <div className="bg-blue-50 border border-blue-200 rounded-md p-4 mb-6">
+        <div className="flex">
+          <div className="ml-3">
+            <h3 className="text-sm font-medium text-blue-800">How Joining Works</h3>
+            <div className="mt-2 text-sm text-blue-700">
+              <p><strong>New:</strong> You must make an initial deposit to join a group. This secures your membership and starts your savings journey immediately.</p>
+            </div>
+          </div>
+        </div>
+      </div>
       
       {/* Loading State */}
       {isLoadingGroups && (
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="ml-2 text-gray-600">Loading available groups...</span>
+          <span className="ml-2 text-gray-400">Loading available groups...</span>
         </div>
       )}
 
@@ -169,7 +196,7 @@ export default function JoinGroupForm({ onGroupJoined }: JoinGroupFormProps) {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No Available Groups</h3>
+              <h3 className="text-lg font-medium text-white mb-2">No Available Groups</h3>
               <p className="text-gray-500">
                 {user 
                   ? "There are no open groups available to join at the moment, or you're already a member of all existing groups."
@@ -179,7 +206,7 @@ export default function JoinGroupForm({ onGroupJoined }: JoinGroupFormProps) {
             </div>
           ) : (
             <div className="space-y-4">
-              <p className="text-sm text-gray-600 mb-4">
+              <p className="text-sm text-gray-400 mb-4">
                 Found {openGroups.length} group{openGroups.length !== 1 ? 's' : ''} available to join:
               </p>
               
@@ -187,7 +214,7 @@ export default function JoinGroupForm({ onGroupJoined }: JoinGroupFormProps) {
                 <div key={group.groupId} className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors">
                   <div className="flex justify-between items-start mb-3">
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900">{group.name}</h3>
+                      <h3 className="text-lg font-semibold text-white">{group.name}</h3>
                       <p className="text-sm text-gray-500">Group ID: {group.groupId}</p>
                     </div>
                     <div className="text-right">
@@ -200,18 +227,18 @@ export default function JoinGroupForm({ onGroupJoined }: JoinGroupFormProps) {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                     <div>
                       <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Lock Duration</p>
-                      <p className="text-sm text-gray-900">{getLockDurationLabel(group.duration)}</p>
+                      <p className="text-sm text-white">{getLockDurationLabel(group.duration)}</p>
                     </div>
                     <div>
                       <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Members</p>
-                      <p className="text-sm text-gray-900">
+                      <p className="text-sm text-white">
                         {group.memberCount}
                         {group.threshold ? ` / ${group.threshold}` : ' (unlimited)'}
                       </p>
                     </div>
                     <div>
                       <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Creator</p>
-                      <p className="text-sm text-gray-900 font-mono">
+                      <p className="text-sm text-white font-mono">
                         {group.creator.slice(0, 8)}...{group.creator.slice(-4)}
                       </p>
                     </div>
@@ -231,21 +258,67 @@ export default function JoinGroupForm({ onGroupJoined }: JoinGroupFormProps) {
                       </div>
                     </div>
                   )}
-                  
-                  <button
-                    onClick={() => handleJoinGroup(group.groupId)}
-                    disabled={isLoading || !isConnected || joiningGroupId === group.groupId}
-                    className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {joiningGroupId === group.groupId ? (
-                      <div className="flex items-center">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        Joining...
+
+                  {!showDepositForm[group.groupId] ? (
+                    <button
+                      onClick={() => setShowDepositForm(prev => ({ ...prev, [group.groupId]: true }))}
+                      disabled={isLoading || !isConnected}
+                      className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Join Group
+                    </button>
+                  ) : (
+                    <div className="space-y-3">
+                      <div>
+                        <label htmlFor={`deposit-${group.groupId}`} className="block text-sm font-medium text-gray-300 mb-1">
+                          Initial Deposit Amount (STX)
+                        </label>
+                        <input
+                          type="number"
+                          id={`deposit-${group.groupId}`}
+                          step="0.000001"
+                          min="0.000001"
+                          value={depositAmounts[group.groupId] || ''}
+                          onChange={(e) => setDepositAmounts(prev => ({ ...prev, [group.groupId]: e.target.value }))}
+                          placeholder="Enter amount in STX"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
                       </div>
-                    ) : (
-                      'Join Group'
-                    )}
-                  </button>
+                      <div className="flex space-x-3">
+                        <button
+                          onClick={() => handleJoinGroupWithDeposit(group.groupId)}
+                          disabled={isLoading || !isConnected || joiningGroupId === group.groupId || !depositAmounts[group.groupId]}
+                          className="flex-1 flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {joiningGroupId === group.groupId ? (
+                            <div className="flex items-center">
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                              Joining...
+                            </div>
+                          ) : (
+                            'Join & Deposit'
+                          )}
+                        </button>
+                        <button
+                          onClick={() => setShowDepositForm(prev => ({ ...prev, [group.groupId]: false }))}
+                          disabled={isLoading}
+                          className="px-4 py-2 border border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-300 dark:text-gray-200 bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:focus:ring-offset-gray-800"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-md">
+                    <p className="text-xs text-green-800">
+                      <strong>Deposit Required:</strong> You must make an initial deposit to join this group. You can add more funds later as a member.
+                      {group.threshold 
+                        ? ` This group will auto-start when it reaches ${group.threshold} members.`
+                        : ' The creator will manually start this group.'
+                      }
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>

@@ -1,31 +1,41 @@
 /**
- * Dashboard Page - Main landing page for the StackIt dApp
+ * Dashboard Page - Main landing page for the SafeStack dApp
  * Shows wallet connection, vault info, and quick action buttons
  */
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import WalletConnect from '@/components/wallet-connect';
 import VaultInfo from '@/components/vault-info';
-import { useStacks } from '@/hooks/use-stacks';
+import { useWallet } from '@/contexts/wallet-context';
 
 export default function Dashboard() {
-  const { isConnected } = useStacks();
+  const { isConnected, user } = useWallet();
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Debug wallet connection state
+  console.log('🏠 Dashboard render:', { isConnected, userAddress: user?.address, refreshKey });
 
   // Force refresh of vault info after transactions
   const handleRefresh = () => {
     setRefreshKey(prev => prev + 1);
   };
 
+  // Reset refresh key when wallet disconnects to ensure clean state
+  useEffect(() => {
+    if (!isConnected || !user) {
+      setRefreshKey(0);
+    }
+  }, [isConnected, user?.address]);
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white-900 mb-2">StackIt Dashboard</h1>
-        <p className="text-lg text-gray-600">
+        <h1 className="text-3xl font-bold text-white mb-2">SafeStack Dashboard</h1>
+        <p className="text-lg text-gray-300">
           A decentralized savings vault with flexible time-based lock periods on Stacks blockchain
         </p>
       </div>
@@ -37,9 +47,10 @@ export default function Dashboard() {
           {/* Wallet Connection */}
           <WalletConnect />
           
-          {/* Vault Information - Only show when connected */}
-          {isConnected && (
+          {/* Vault Information - Only show when wallet is connected */}
+          {isConnected && user && (
             <VaultInfo 
+              key={user.address} // Force re-render on wallet change
               refreshTrigger={refreshKey}
               onRefresh={() => console.log('Vault info refreshed')}
             />
@@ -49,8 +60,8 @@ export default function Dashboard() {
         {/* Right Column - Quick Actions */}
         <div className="space-y-6">
           {/* Quick Actions Card */}
-          <div className="p-6 bg-white border border-gray-200 rounded-lg shadow-sm">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
+          <div className="p-6 bg-gray-800 border border-gray-700 rounded-lg shadow-sm">
+            <h2 className="text-xl font-semibold text-white mb-4">Quick Actions</h2>
             
             {isConnected ? (
               <div className="space-y-3">
@@ -63,29 +74,29 @@ export default function Dashboard() {
                 
                 <Link
                   href="/withdraw"
-                  className="w-full flex items-center justify-center px-4 py-3 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                  className="w-full flex items-center justify-center px-4 py-3 text-sm font-medium text-gray-200 bg-gray-700 border border-gray-600 rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800"
                 >
                   💸 Withdraw STX
                 </Link>
                 
                 <button
                   onClick={handleRefresh}
-                  className="w-full flex items-center justify-center px-4 py-3 text-sm font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded-md hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+                  className="w-full flex items-center justify-center px-4 py-3 text-sm font-medium text-gray-300 bg-gray-700 border border-gray-600 rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-gray-800"
                 >
                   🔄 Refresh Data
                 </button>
               </div>
             ) : (
-              <p className="text-gray-500 text-center py-4">
+              <p className="text-gray-400 text-center py-4">
                 Connect your wallet to access vault features
               </p>
             )}
           </div>
 
           {/* How It Works Card */}
-          <div className="p-6 bg-blue-50 border border-blue-200 rounded-lg">
-            <h3 className="text-lg font-semibold text-blue-900 mb-3">How It Works</h3>
-            <ul className="text-sm text-blue-800 space-y-2">
+          <div className="p-6 bg-blue-900/20 border border-blue-800 rounded-lg">
+            <h3 className="text-lg font-semibold text-blue-100 mb-3">How It Works</h3>
+            <ul className="text-sm text-blue-200 space-y-2">
               <li className="flex items-start">
                 <span className="font-semibold mr-2">1.</span>
                 Connect your Stacks wallet
@@ -114,9 +125,9 @@ export default function Dashboard() {
           </div>
 
           {/* Lock Period Benefits Card */}
-          <div className="p-6 bg-green-50 border border-green-200 rounded-lg">
-            <h3 className="text-lg font-semibold text-green-900 mb-3">💡 Lock Period Benefits</h3>
-            <ul className="text-sm text-green-800 space-y-2">
+          <div className="p-6 bg-green-900/20 border border-green-800 rounded-lg">
+            <h3 className="text-lg font-semibold text-green-100 mb-3">💡 Lock Period Benefits</h3>
+            <ul className="text-sm text-green-200 space-y-2">
               <li className="flex items-start">
                 <span className="font-semibold mr-2">•</span>
                 <strong>Short-term:</strong> Quick savings goals (1-8 hours)
@@ -141,23 +152,25 @@ export default function Dashboard() {
           </div>
 
           {/* Contract Info Card */}
-          <div className="p-6 bg-gray-50 border border-gray-200 rounded-lg">
-            <h3 className="text-lg font-semibold text-gray-900 mb-3">Contract Info</h3>
-            <div className="text-sm text-gray-600 space-y-2">
+          <div className="p-6 bg-gray-800 border border-gray-700 rounded-lg">
+            <h3 className="text-lg font-semibold text-white mb-3">Contract Info</h3>
+            <div className="text-sm text-gray-300 space-y-2">
               <p><span className="font-medium">Network:</span> Testnet</p>
               <p><span className="font-medium">Lock Options:</span> 13 time periods</p>
-              <p><span className="font-medium">Min Deposit:</span> 0.000001 STX</p>
+              <p><span className="font-medium">Min Deposit:</span> $2.00 USD equivalent</p>
               <p><span className="font-medium">Block Time:</span> ~10 minutes</p>
-              <div className="pt-2 border-t border-gray-200">
-                <p className="text-xs text-gray-500">
+              <div className="pt-2 border-t border-gray-600">
+                <p className="text-xs text-gray-400">
                   Contract: {process.env.NEXT_PUBLIC_CONTRACT_NAME}
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-gray-400">
                   Address: {process.env.NEXT_PUBLIC_CONTRACT_ADDRESS?.slice(0, 10)}...
                 </p>
               </div>
             </div>
           </div>
+
+
         </div>
       </div>
     </div>

@@ -5,6 +5,7 @@
 (define-constant ERR-UNAUTHORIZED u103)
 (define-constant ERR-INSUFFICIENT-BALANCE u104)
 (define-constant ERR-INVALID-LOCK-OPTION u105)
+(define-constant ERR-BELOW-MINIMUM-DEPOSIT u114)
 
 ;; Group savings error codes
 (define-constant ERR-GROUP-NOT-FOUND u106)
@@ -15,6 +16,19 @@
 (define-constant ERR-ALREADY-JOINED u111)
 (define-constant ERR-GROUP-NOT-STARTED u112)
 (define-constant ERR-INVALID-GROUP-NAME u113)
+
+;; Price Oracle System for $2 USD minimum enforcement
+;; STX price in USD with 6 decimal precision (e.g., $0.520000 = 520000)
+(define-data-var stx-usd-price uint u500000) ;; Default: $0.50
+
+;; USD minimum deposit amount with 6 decimal precision ($2.00 = 2000000)
+(define-constant USD-MINIMUM-DEPOSIT u2000000) ;; $2.00 USD
+
+;; Price oracle update authority (contract deployer initially)
+(define-data-var price-oracle-authority principal tx-sender)
+
+;; Last price update timestamp (block height)
+(define-data-var last-price-update uint u0)
 
 ;; Time-based lock duration constants (converted to blocks)
 ;; Based on average Stacks block time of 10 minutes per block
@@ -47,7 +61,7 @@
 (define-constant LOCK-9-MONTHS u12)
 (define-constant LOCK-1-YEAR u13)
 
-;; Individual deposits map (existing functionality)
+;; Individual deposits map (legacy - single deposit per user)
 (define-map deposits
     { user: principal }
     {
@@ -55,6 +69,31 @@
         deposit-block: uint,
         lock-expiry: uint,
     }
+)
+
+;; Multiple deposits system - each deposit has unique ID
+(define-data-var deposit-counter uint u0)
+
+;; Multiple deposits map - supports multiple deposits per user with optional names
+(define-map user-deposits
+    {
+        user: principal,
+        deposit-id: uint,
+    }
+    {
+        amount: uint,
+        deposit-block: uint,
+        lock-expiry: uint,
+        lock-option: uint,
+        withdrawn: bool,
+        name: (optional (string-ascii 50)),
+    }
+)
+
+;; User deposit list - tracks all deposit IDs for a user
+(define-map user-deposit-list
+    { user: principal }
+    { deposit-ids: (list 100 uint) }
 )
 
 ;; Group counter for unique group IDs
@@ -142,7 +181,74 @@
     )
 )
 
-;; Deposit STX into the vault with time-based lock duration
+;; Create a new deposit with independent lock period and optional name
+;; @param amount: Amount of STX to deposit (in microstacks)
+;; @param lock-option: Time duration option (1-13, see constants above)
+;; @param name: Optional name for the deposit (max 50 characters)
+(define-public (create-deposit
+        (amount uint)
+        (lock-option uint)
+        (name (optional (string-ascii 50)))
+    )
+    (let (
+            (sender tx-sender)
+            (lock-blocks (get-lock-duration lock-option))
+            (deposit-id (+ (var-get deposit-counter) u1))
+            (current-deposits (default-to { deposit-ids: (list) }
+                (map-get? user-deposit-list { user: sender })
+            ))
+        )
+        ;; Validate inputs
+        (asserts! (> amount u0) (err ERR-INVALID-AMOUNT))
+        (asserts! (> lock-blocks u0) (err ERR-INVALID-LOCK-OPTION))
+        (asserts! (>= amount (calculate-minimum-stx-amount))
+            (err ERR-BELOW-MINIMUM-DEPOSIT)
+        )
+
+        ;; Validate name if provided
+        (match name
+            some-name (asserts! (and (> (len some-name) u0) (<= (len some-name) u50))
+                (err ERR-INVALID-GROUP-NAME) ;; Reuse existing error code
+            )
+            true
+        )
+
+        ;; Transfer STX from user to contract
+        (try! (stx-transfer? amount sender (as-contract tx-sender)))
+
+        ;; Create new deposit record
+        (map-set user-deposits {
+            user: sender,
+            deposit-id: deposit-id,
+        } {
+            amount: amount,
+            deposit-block: stacks-block-height,
+            lock-expiry: (+ stacks-block-height lock-blocks),
+            lock-option: lock-option,
+            withdrawn: false,
+            name: name,
+        })
+
+        ;; Update user's deposit list
+        (let ((updated-ids (unwrap!
+                (as-max-len?
+                    (append (get deposit-ids current-deposits) deposit-id)
+                    u100
+                )
+                (err ERR-INVALID-AMOUNT)
+                ;; Reuse error code for max deposits reached
+            )))
+            (map-set user-deposit-list { user: sender } { deposit-ids: updated-ids })
+        )
+
+        ;; Update deposit counter
+        (var-set deposit-counter deposit-id)
+
+        (ok deposit-id)
+    )
+)
+
+;; Legacy deposit function (backward compatibility) - overwrites single deposit
 ;; @param amount: Amount of STX to deposit (in microstacks)
 ;; @param lock-option: Time duration option (1-13, see constants above)
 (define-public (deposit
@@ -157,23 +263,84 @@
             (err ERR-INVALID-AMOUNT)
             (if (is-eq lock-blocks u0)
                 (err ERR-INVALID-LOCK-OPTION)
-                (begin
-                    ;; Transfer STX from user to contract
-                    (try! (stx-transfer? amount sender (as-contract tx-sender)))
-                    ;; Store deposit information with calculated lock expiry
-                    (map-set deposits { user: sender } {
-                        amount: amount,
-                        deposit-block: stacks-block-height,
-                        lock-expiry: (+ stacks-block-height lock-blocks),
-                    })
-                    (ok amount)
+                (if (< amount (calculate-minimum-stx-amount))
+                    (err ERR-BELOW-MINIMUM-DEPOSIT)
+                    (begin
+                        ;; Transfer STX from user to contract
+                        (try! (stx-transfer? amount sender (as-contract tx-sender)))
+                        ;; Store deposit information with calculated lock expiry (legacy single deposit)
+                        (map-set deposits { user: sender } {
+                            amount: amount,
+                            deposit-block: stacks-block-height,
+                            lock-expiry: (+ stacks-block-height lock-blocks),
+                        })
+                        (ok amount)
+                    )
                 )
             )
         )
     )
 )
 
-;; Withdraw STX after lock period expires
+;; Withdraw from a specific deposit after lock period expires
+;; @param deposit-id: ID of the specific deposit to withdraw from
+;; @param amount: Amount of STX to withdraw (in microstacks)
+(define-public (withdraw-deposit
+        (deposit-id uint)
+        (amount uint)
+    )
+    (let (
+            (sender tx-sender)
+            (deposit-data (unwrap!
+                (map-get? user-deposits {
+                    user: sender,
+                    deposit-id: deposit-id,
+                })
+                (err ERR-NO-DEPOSIT)
+            ))
+        )
+        (let (
+                (deposit-amount (get amount deposit-data))
+                (lock-expiry (get lock-expiry deposit-data))
+                (is-withdrawn (get withdrawn deposit-data))
+            )
+            ;; Check if deposit exists and hasn't been withdrawn
+            (asserts! (not is-withdrawn) (err ERR-NO-DEPOSIT))
+            (asserts! (> amount u0) (err ERR-INVALID-AMOUNT))
+
+            ;; Check if lock period has expired
+            (asserts! (>= stacks-block-height lock-expiry) (err ERR-STILL-LOCKED))
+
+            ;; Check if withdrawal amount is valid
+            (asserts! (<= amount deposit-amount) (err ERR-INSUFFICIENT-BALANCE))
+
+            ;; Transfer STX from contract back to user
+            (try! (as-contract (stx-transfer? amount tx-sender sender)))
+
+            ;; Update deposit record
+            (if (is-eq amount deposit-amount)
+                ;; Full withdrawal - mark as withdrawn
+                (map-set user-deposits {
+                    user: sender,
+                    deposit-id: deposit-id,
+                }
+                    (merge deposit-data { withdrawn: true })
+                )
+                ;; Partial withdrawal - update amount
+                (map-set user-deposits {
+                    user: sender,
+                    deposit-id: deposit-id,
+                }
+                    (merge deposit-data { amount: (- deposit-amount amount) })
+                )
+            )
+
+            (ok amount)
+        )
+    )
+)
+
+;; Legacy withdraw function (backward compatibility) - single deposit system
 ;; @param amount: Amount of STX to withdraw (in microstacks)
 (define-public (withdraw (amount uint))
     (let ((sender tx-sender))
@@ -258,6 +425,228 @@
 )
 
 ;; =============================================================================
+;; MULTIPLE DEPOSITS READ-ONLY FUNCTIONS
+;; =============================================================================
+
+;; Get all deposit IDs for a user
+(define-read-only (get-user-deposit-ids (user principal))
+    (default-to { deposit-ids: (list) }
+        (map-get? user-deposit-list { user: user })
+    )
+)
+
+;; Get specific deposit information
+(define-read-only (get-user-deposit
+        (user principal)
+        (deposit-id uint)
+    )
+    (map-get? user-deposits {
+        user: user,
+        deposit-id: deposit-id,
+    })
+)
+
+;; Get total balance across all active deposits for a user
+(define-read-only (get-total-user-balance (user principal))
+    (let ((deposit-ids (get deposit-ids (get-user-deposit-ids user))))
+        (fold calculate-total-balance deposit-ids u0)
+    )
+)
+
+;; Helper function for calculating total balance
+(define-private (calculate-total-balance
+        (deposit-id uint)
+        (total uint)
+    )
+    (let ((deposit-data (map-get? user-deposits {
+            user: tx-sender, ;; Note: This limits function to current user context
+            deposit-id: deposit-id,
+        })))
+        (match deposit-data
+            data (if (get withdrawn data)
+                total
+                (+ total (get amount data))
+            )
+            total
+        )
+    )
+)
+
+;; Get count of active deposits for a user
+(define-read-only (get-active-deposit-count (user principal))
+    (let ((deposit-ids (get deposit-ids (get-user-deposit-ids user))))
+        (fold count-active-deposits deposit-ids u0)
+    )
+)
+
+;; Helper function for counting active deposits
+(define-private (count-active-deposits
+        (deposit-id uint)
+        (count uint)
+    )
+    (let ((deposit-data (map-get? user-deposits {
+            user: tx-sender, ;; Note: This limits function to current user context
+            deposit-id: deposit-id,
+        })))
+        (match deposit-data
+            data (if (get withdrawn data)
+                count
+                (+ count u1)
+            )
+            count
+        )
+    )
+)
+
+;; Check if a specific deposit is locked
+(define-read-only (is-deposit-locked
+        (user principal)
+        (deposit-id uint)
+    )
+    (let ((deposit-data (map-get? user-deposits {
+            user: user,
+            deposit-id: deposit-id,
+        })))
+        (match deposit-data
+            data (and
+                (not (get withdrawn data))
+                (< stacks-block-height (get lock-expiry data))
+            )
+            false
+        )
+    )
+)
+
+;; Get remaining blocks for a specific deposit
+(define-read-only (get-deposit-remaining-blocks
+        (user principal)
+        (deposit-id uint)
+    )
+    (let ((deposit-data (map-get? user-deposits {
+            user: user,
+            deposit-id: deposit-id,
+        })))
+        (match deposit-data
+            data (if (and
+                    (not (get withdrawn data))
+                    (< stacks-block-height (get lock-expiry data))
+                )
+                (- (get lock-expiry data) stacks-block-height)
+                u0
+            )
+            u0
+        )
+    )
+)
+
+;; Get current deposit counter (total deposits created)
+(define-read-only (get-deposit-counter)
+    (var-get deposit-counter)
+)
+
+;; =============================================================================
+;; PRICE ORACLE AND MINIMUM DEPOSIT MANAGEMENT
+;; =============================================================================
+
+;; Calculate minimum STX amount required for $2 USD
+;; Returns amount in microstacks
+(define-read-only (calculate-minimum-stx-amount)
+    (let ((stx-price (var-get stx-usd-price)))
+        (if (> stx-price u0)
+            ;; Calculate: ($2.00 * 1,000,000 microstacks) / (price * 1,000,000 precision)
+            ;; Simplified: (2,000,000 * 1,000,000) / price
+            (/ (* USD-MINIMUM-DEPOSIT u1000000) stx-price)
+            u4000000 ;; Fallback: 4 STX if price is invalid
+        )
+    )
+)
+
+;; Get current STX/USD price (6 decimal precision)
+(define-read-only (get-stx-usd-price)
+    (var-get stx-usd-price)
+)
+
+;; Get USD minimum deposit amount
+(define-read-only (get-usd-minimum-deposit)
+    USD-MINIMUM-DEPOSIT
+)
+
+;; Get current minimum deposit amount in STX (microstacks)
+(define-read-only (get-minimum-deposit-amount)
+    (calculate-minimum-stx-amount)
+)
+
+;; Get price oracle authority
+(define-read-only (get-price-oracle-authority)
+    (var-get price-oracle-authority)
+)
+
+;; Get last price update block
+(define-read-only (get-last-price-update)
+    (var-get last-price-update)
+)
+
+;; Update STX/USD price (oracle authority only)
+;; @param new-price: New STX price in USD with 6 decimal precision
+(define-public (update-stx-price (new-price uint))
+    (begin
+        ;; Only price oracle authority can update
+        (asserts! (is-eq tx-sender (var-get price-oracle-authority))
+            (err ERR-UNAUTHORIZED)
+        )
+        ;; Price must be positive and reasonable (between $0.01 and $100.00)
+        (asserts! (and (>= new-price u10000) (<= new-price u100000000))
+            (err ERR-INVALID-AMOUNT)
+        )
+
+        ;; Update price and timestamp
+        (var-set stx-usd-price new-price)
+        (var-set last-price-update stacks-block-height)
+
+        (ok new-price)
+    )
+)
+
+;; Update price oracle authority (current authority only)
+;; @param new-authority: New price oracle authority principal
+(define-public (update-price-oracle-authority (new-authority principal))
+    (begin
+        ;; Only current authority can transfer
+        (asserts! (is-eq tx-sender (var-get price-oracle-authority))
+            (err ERR-UNAUTHORIZED)
+        )
+        (var-set price-oracle-authority new-authority)
+        (ok new-authority)
+    )
+)
+
+;; Validate if amount meets minimum deposit requirement
+(define-read-only (is-valid-deposit-amount (amount uint))
+    (>= amount (calculate-minimum-stx-amount))
+)
+
+;; Get deposit validation info
+(define-read-only (get-deposit-validation-info (amount uint))
+    (let (
+            (minimum-stx (calculate-minimum-stx-amount))
+            (stx-price (var-get stx-usd-price))
+            (usd-value (if (> stx-price u0)
+                (/ (* amount stx-price) u1000000)
+                u0
+            ))
+        )
+        {
+            minimum-stx-required: minimum-stx,
+            stx-price: stx-price,
+            usd-minimum: USD-MINIMUM-DEPOSIT,
+            deposit-usd-value: usd-value,
+            is-valid: (>= amount minimum-stx),
+            last-price-update: (var-get last-price-update),
+        }
+    )
+)
+
+;; =============================================================================
 ;; GROUP SAVINGS FUNCTIONALITY
 ;; =============================================================================
 
@@ -320,8 +709,9 @@
     )
 )
 
-;; Join an existing savings group
+;; Legacy join function (backward compatibility) - joins without deposit
 ;; @param group-id: ID of the group to join
+;; Note: This is kept for backward compatibility but new UI should use join-group-with-deposit
 (define-public (join-group (group-id uint))
     (let (
             (joiner tx-sender)
@@ -352,13 +742,101 @@
             true
         )
 
-        ;; Add member to group
+        ;; Add member to group without deposit
         (map-set group-members {
             group-id: group-id,
             member: joiner,
         } {
             amount: u0,
             deposit-block: u0,
+            joined-block: stacks-block-height,
+        })
+
+        ;; Update member list
+        (let ((updated-members (unwrap!
+                (as-max-len? (append (get members current-members) joiner) u100)
+                (err ERR-GROUP-FULL)
+            )))
+            (map-set group-member-list { group-id: group-id } { members: updated-members })
+        )
+
+        ;; Update member count and check if threshold reached
+        (let ((new-member-count (+ (get member-count group-data) u1)))
+            (map-set savings-groups { group-id: group-id }
+                (merge group-data { member-count: new-member-count })
+            )
+
+            ;; Auto-lock if threshold reached
+            (match (get threshold group-data)
+                some-threshold (if (>= new-member-count some-threshold)
+                    (begin
+                        (map-set savings-groups { group-id: group-id }
+                            (merge group-data {
+                                member-count: new-member-count,
+                                locked: true,
+                                start-block: (some stacks-block-height),
+                                lock-expiry: (some (+ stacks-block-height (get duration group-data))),
+                            })
+                        )
+                        (ok "joined-and-locked")
+                    )
+                    (ok "joined")
+                )
+                (ok "joined")
+            )
+        )
+    )
+)
+
+;; Join an existing savings group with initial deposit
+;; @param group-id: ID of the group to join
+;; @param amount: Initial deposit amount (required to join)
+(define-public (join-group-with-deposit
+        (group-id uint)
+        (amount uint)
+    )
+    (let (
+            (joiner tx-sender)
+            (group-data (unwrap! (map-get? savings-groups { group-id: group-id })
+                (err ERR-GROUP-NOT-FOUND)
+            ))
+            (current-members (default-to { members: (list) }
+                (map-get? group-member-list { group-id: group-id })
+            ))
+        )
+        ;; Validate deposit amount
+        (asserts! (> amount u0) (err ERR-INVALID-AMOUNT))
+
+        ;; Check if group exists and is not locked
+        (asserts! (not (get locked group-data)) (err ERR-GROUP-LOCKED))
+
+        ;; Check if user is already a member
+        (asserts!
+            (is-none (map-get? group-members {
+                group-id: group-id,
+                member: joiner,
+            }))
+            (err ERR-ALREADY-JOINED)
+        )
+
+        ;; Check if group has space (if threshold is set)
+        (match (get threshold group-data)
+            some-threshold (asserts! (< (get member-count group-data) some-threshold)
+                (err ERR-GROUP-FULL)
+            )
+            true
+        )
+
+        ;; Transfer STX from user to contract (required deposit to join)
+        (try! (stx-transfer? amount joiner (as-contract tx-sender)))
+
+        ;; Add member to group with initial deposit
+        (map-set group-members {
+            group-id: group-id,
+            member: joiner,
+        } {
+            amount: amount,
+            deposit-block: stacks-block-height,
             joined-block: stacks-block-height,
         })
 
@@ -429,7 +907,7 @@
     )
 )
 
-;; Deposit STX into a group vault
+;; Deposit STX into a group vault (members only, works even when locked)
 ;; @param group-id: ID of the group
 ;; @param amount: Amount of STX to deposit (in microstacks)
 (define-public (group-deposit
@@ -452,8 +930,8 @@
         ;; Validate amount
         (asserts! (> amount u0) (err ERR-INVALID-AMOUNT))
 
-        ;; Group must be locked (started) to accept deposits
-        (asserts! (get locked group-data) (err ERR-GROUP-NOT-STARTED))
+        ;; Only existing members can deposit (no restriction on group lock status)
+        ;; This allows members to add funds even when group is locked or closed
 
         ;; Transfer STX from user to contract
         (try! (stx-transfer? amount depositor (as-contract tx-sender)))

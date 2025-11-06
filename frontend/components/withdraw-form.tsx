@@ -1,13 +1,13 @@
 /**
  * Withdraw Form Component
- * Handles STX withdrawals from StackIt with time-based lock validation
+ * Handles STX withdrawals from SafeStack with time-based lock validation
  * Updated to support the new contract's time-based lock periods
  */
 
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useStacks } from '@/hooks/use-stacks';
+import { useWallet } from '@/contexts/wallet-context';
 import { getUserDeposit, canWithdraw } from '@/lib/contract';
 import { formatRemainingTime, convertOptionToLabel } from '@/lib/lock-options';
 import type { DepositInfo } from '@/lib/contract';
@@ -17,7 +17,7 @@ interface WithdrawFormProps {
 }
 
 export default function WithdrawForm({ onWithdrawSuccess }: WithdrawFormProps) {
-  const { user, isConnected } = useStacks();
+  const { user, isConnected } = useWallet();
   const [amount, setAmount] = useState<string>('');
   const [depositInfo, setDepositInfo] = useState<DepositInfo>({ amount: 0, depositBlock: 0 });
   const [currentBlock, setCurrentBlock] = useState<number>(0);
@@ -166,9 +166,9 @@ export default function WithdrawForm({ onWithdrawSuccess }: WithdrawFormProps) {
   // Don't render if wallet not connected
   if (!isConnected) {
     return (
-      <div className="p-6 bg-gray-50 border border-gray-200 rounded-lg">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Withdraw STX</h2>
-        <p className="text-gray-600">Connect your wallet to make withdrawals</p>
+      <div className="p-6 bg-gray-800 dark:bg-gray-800 border border-gray-700 rounded-lg">
+        <h2 className="text-xl font-semibold text-white mb-4">Withdraw STX</h2>
+        <p className="text-gray-400">Connect your wallet to make withdrawals</p>
       </div>
     );
   }
@@ -176,8 +176,8 @@ export default function WithdrawForm({ onWithdrawSuccess }: WithdrawFormProps) {
   // Show loading state while fetching deposit info
   if (isLoadingInfo) {
     return (
-      <div className="p-6 bg-white border border-gray-200 rounded-lg shadow-sm">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Withdraw STX</h2>
+      <div className="p-6 bg-gray-800 border border-gray-700 rounded-lg shadow-sm">
+        <h2 className="text-xl font-semibold text-white mb-4">Withdraw STX</h2>
         <div className="animate-pulse">
           <div className="h-4 bg-gray-200 rounded w-1/4 mb-4"></div>
           <div className="h-10 bg-gray-200 rounded mb-4"></div>
@@ -194,13 +194,13 @@ export default function WithdrawForm({ onWithdrawSuccess }: WithdrawFormProps) {
   const lockDurationLabel = depositInfo.lockOption ? convertOptionToLabel(depositInfo.lockOption) : 'Unknown';
 
   return (
-    <div className="p-6 bg-white border border-gray-200 rounded-lg shadow-sm">
-      <h2 className="text-xl font-semibold text-gray-900 mb-4">Withdraw STX</h2>
+    <div className="p-6 bg-gray-800 border border-gray-700 rounded-lg shadow-sm">
+      <h2 className="text-xl font-semibold text-white mb-4">Withdraw STX</h2>
       
       {/* No Deposit State */}
       {depositInfo.amount === 0 && (
-        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
-          <p className="text-gray-600">No deposits found. Make a deposit first to withdraw funds.</p>
+        <div className="p-4 bg-gray-800 dark:bg-gray-800 border border-gray-700 rounded-lg text-center">
+          <p className="text-gray-400">No deposits found. Make a deposit first to withdraw funds.</p>
         </div>
       )}
 
@@ -257,7 +257,7 @@ export default function WithdrawForm({ onWithdrawSuccess }: WithdrawFormProps) {
 
           {/* Amount Input */}
           <div>
-            <label htmlFor="withdraw-amount" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="withdraw-amount" className="block text-sm font-medium text-gray-300 mb-2">
               Amount (STX)
             </label>
             <div className="relative">
@@ -282,7 +282,7 @@ export default function WithdrawForm({ onWithdrawSuccess }: WithdrawFormProps) {
                 >
                   MAX
                 </button>
-                <span className="text-gray-500 text-sm">STX</span>
+                <span className="text-gray-400 text-sm">STX</span>
               </div>
             </div>
           </div>
@@ -348,7 +348,7 @@ export default function WithdrawForm({ onWithdrawSuccess }: WithdrawFormProps) {
           
           {/* Optional technical details */}
           <details className="mt-2">
-            <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-600 select-none">
+            <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-400 select-none">
               Blockchain details
             </summary>
             <div className="mt-1 text-xs text-gray-500 space-y-1">

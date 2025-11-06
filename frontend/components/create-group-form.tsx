@@ -6,7 +6,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useStacks } from '@/hooks/use-stacks';
+import { useWallet } from '@/contexts/wallet-context';
 import { useGroupVault } from '@/hooks/use-group-vault';
 import { getLockDurationOptions } from '@/lib/lock-options';
 
@@ -15,7 +15,7 @@ interface CreateGroupFormProps {
 }
 
 export default function CreateGroupForm({ onGroupCreated }: CreateGroupFormProps) {
-  const { user, isConnected } = useStacks();
+  const { user, isConnected } = useWallet();
   const { createGroup, isLoading: hookLoading, error: hookError } = useGroupVault();
   const [groupName, setGroupName] = useState<string>('');
   const [selectedLockOption, setSelectedLockOption] = useState<number>(5); // Default to 1 day
@@ -94,13 +94,13 @@ export default function CreateGroupForm({ onGroupCreated }: CreateGroupFormProps
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Create Savings Group</h2>
+    <div className="bg-gray-800 rounded-lg shadow-md p-6">
+      <h2 className="text-2xl font-bold text-white mb-6">Create Savings Group</h2>
       
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Group Name Input */}
         <div>
-          <label htmlFor="groupName" className="block text-sm font-medium text-gray-700 mb-2">
+          <label htmlFor="groupName" className="block text-sm font-medium text-gray-300 mb-2">
             Group Name
           </label>
           <input
@@ -121,7 +121,7 @@ export default function CreateGroupForm({ onGroupCreated }: CreateGroupFormProps
 
         {/* Lock Duration Selection */}
         <div>
-          <label htmlFor="lockDuration" className="block text-sm font-medium text-gray-700 mb-2">
+          <label htmlFor="lockDuration" className="block text-sm font-medium text-gray-300 mb-2">
             Lock Duration
           </label>
           <select
@@ -155,7 +155,7 @@ export default function CreateGroupForm({ onGroupCreated }: CreateGroupFormProps
               className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               disabled={isLoading}
             />
-            <label htmlFor="hasThreshold" className="ml-2 block text-sm text-gray-700">
+            <label htmlFor="hasThreshold" className="ml-2 block text-sm text-gray-300">
               Set member limit (optional)
             </label>
           </div>

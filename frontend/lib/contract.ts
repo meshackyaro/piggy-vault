@@ -1,5 +1,5 @@
 /**
- * Contract interaction utilities for StackIt
+ * Contract interaction utilities for SafeStack
  * Handles all read and write operations with the updated time-based lock Clarity smart contract
  * Updated to support the new contract's time-based lock periods and enhanced functionality
  */
@@ -380,5 +380,244 @@ export const getContractSource = async (): Promise<string> => {
     }
   } catch (error) {
     return `Error fetching contract: ${error}`;
+  }
+};
+
+/**
+ * Call a read-only function on the contract
+ * Generic helper for contract read operations
+ */
+export const callReadOnlyFunction = async (params: {
+  contractAddress: string;
+  contractName: string;
+  functionName: string;
+  functionArgs: any[];
+  senderAddress?: string;
+}): Promise<any> => {
+  try {
+    const network = getStacksNetwork();
+    
+    const result = await fetchCallReadOnlyFunction({
+      contractAddress: params.contractAddress,
+      contractName: params.contractName,
+      functionName: params.functionName,
+      functionArgs: params.functionArgs,
+      network,
+      senderAddress: params.senderAddress || CONTRACT_CONFIG.address,
+    });
+
+    return cvToJSON(result);
+  } catch (error) {
+    console.error(`Error calling ${params.functionName}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Get current STX/USD price from contract
+ * @returns Promise<number> - STX price in USD (with 6 decimal precision)
+ */
+export const getContractSTXPrice = async (): Promise<number> => {
+  try {
+    const result = await callReadOnlyFunction({
+      contractAddress: CONTRACT_CONFIG.address,
+      contractName: CONTRACT_CONFIG.name,
+      functionName: 'get-stx-usd-price',
+      functionArgs: [],
+    });
+
+    if (result && typeof result === 'object' && 'value' in result) {
+      // Convert from 6 decimal precision to regular number
+      return Number(result.value) / 1000000;
+    }
+
+    return 0.5; // Fallback price
+  } catch (error) {
+    console.error('Error fetching contract STX price:', error);
+    return 0.5; // Fallback price
+  }
+};
+
+/**
+ * Get minimum deposit amount in STX from contract
+ * @returns Promise<number> - Minimum STX amount required
+ */
+export const getContractMinimumDeposit = async (): Promise<number> => {
+  try {
+    const result = await callReadOnlyFunction({
+      contractAddress: CONTRACT_CONFIG.address,
+      contractName: CONTRACT_CONFIG.name,
+      functionName: 'get-minimum-deposit-amount',
+      functionArgs: [],
+    });
+
+    if (result && typeof result === 'object' && 'value' in result) {
+      // Convert from microstacks to STX
+      return microStxToStx(Number(result.value));
+    }
+
+    return 4.0; // Fallback minimum
+  } catch (error) {
+    console.error('Error fetching contract minimum deposit:', error);
+    return 4.0; // Fallback minimum
+  }
+};
+
+/**
+ * Get USD minimum deposit amount from contract
+ * @returns Promise<number> - USD minimum amount
+ */
+export const getContractUSDMinimum = async (): Promise<number> => {
+  try {
+    const result = await callReadOnlyFunction({
+      contractAddress: CONTRACT_CONFIG.address,
+      contractName: CONTRACT_CONFIG.name,
+      functionName: 'get-usd-minimum-deposit',
+      functionArgs: [],
+    });
+
+    if (result && typeof result === 'object' && 'value' in result) {
+      // Convert from 6 decimal precision to regular number
+      return Number(result.value) / 1000000;
+    }
+
+    return 2.0; // Fallback USD minimum
+  } catch (error) {
+    console.error('Error fetching contract USD minimum:', error);
+    return 2.0; // Fallback USD minimum
+  }
+};
+
+/**
+ * Get price oracle authority from contract
+ * @returns Promise<string> - Price oracle authority address
+ */
+export const getPriceOracleAuthority = async (): Promise<string> => {
+  try {
+    const result = await callReadOnlyFunction({
+      contractAddress: CONTRACT_CONFIG.address,
+      contractName: CONTRACT_CONFIG.name,
+      functionName: 'get-price-oracle-authority',
+      functionArgs: [],
+    });
+
+    if (result && typeof result === 'object' && 'value' in result) {
+      return result.value as string;
+    }
+
+    return '';
+  } catch (error) {
+    console.error('Error fetching price oracle authority:', error);
+    return '';
+  }
+};
+
+/**
+ * Get last price update block from contract
+ * @returns Promise<number> - Block height of last price update
+ */
+export const getLastPriceUpdate = async (): Promise<number> => {
+  try {
+    const result = await callReadOnlyFunction({
+      contractAddress: CONTRACT_CONFIG.address,
+      contractName: CONTRACT_CONFIG.name,
+      functionName: 'get-last-price-update',
+      functionArgs: [],
+    });
+
+    if (result && typeof result === 'object' && 'value' in result) {
+      return Number(result.value);
+    }
+
+    return 0;
+  } catch (error) {
+    console.error('Error fetching last price update:', error);
+    return 0;
+  }
+};
+
+/**
+ * Validate if deposit amount meets minimum requirement (contract check)
+ * @param stxAmount - Amount in STX to validate
+ * @returns Promise<boolean> - Whether amount is valid
+ */
+export const validateDepositAmount = async (stxAmount: number): Promise<boolean> => {
+  try {
+    const { stxToMicroStx } = await import('./stacks-config');
+    
+    const result = await callReadOnlyFunction({
+      contractAddress: CONTRACT_CONFIG.address,
+      contractName: CONTRACT_CONFIG.name,
+      functionName: 'is-valid-deposit-amount',
+      functionArgs: [stxToMicroStx(stxAmount)],
+    });
+
+    if (result && typeof result === 'object' && 'value' in result) {
+      return Boolean(result.value);
+    }
+
+    return false;
+  } catch (error) {
+    console.error('Error validating deposit amount:', error);
+    return false;
+  }
+};
+
+/**
+ * Get comprehensive deposit validation info from contract
+ * @param stxAmount - Amount in STX to validate
+ * @returns Promise<object> - Detailed validation information
+ */
+export const getDepositValidationInfo = async (stxAmount: number): Promise<{
+  minimumSTXRequired: number;
+  stxPrice: number;
+  usdMinimum: number;
+  depositUSDValue: number;
+  isValid: boolean;
+  lastPriceUpdate: number;
+}> => {
+  try {
+    const { stxToMicroStx } = await import('./stacks-config');
+    
+    const result = await callReadOnlyFunction({
+      contractAddress: CONTRACT_CONFIG.address,
+      contractName: CONTRACT_CONFIG.name,
+      functionName: 'get-deposit-validation-info',
+      functionArgs: [stxToMicroStx(stxAmount)],
+    });
+
+    if (result && typeof result === 'object' && 'value' in result) {
+      const data = result.value as Record<string, { value: number }>;
+      
+      return {
+        minimumSTXRequired: microStxToStx(Number(data['minimum-stx-required']?.value || 0)),
+        stxPrice: Number(data['stx-price']?.value || 0) / 1000000,
+        usdMinimum: Number(data['usd-minimum']?.value || 0) / 1000000,
+        depositUSDValue: Number(data['deposit-usd-value']?.value || 0) / 1000000,
+        isValid: Boolean(data['is-valid']?.value),
+        lastPriceUpdate: Number(data['last-price-update']?.value || 0),
+      };
+    }
+
+    // Fallback values
+    return {
+      minimumSTXRequired: 4.0,
+      stxPrice: 0.5,
+      usdMinimum: 2.0,
+      depositUSDValue: stxAmount * 0.5,
+      isValid: stxAmount >= 4.0,
+      lastPriceUpdate: 0,
+    };
+  } catch (error) {
+    console.error('Error getting deposit validation info:', error);
+    // Fallback values
+    return {
+      minimumSTXRequired: 4.0,
+      stxPrice: 0.5,
+      usdMinimum: 2.0,
+      depositUSDValue: stxAmount * 0.5,
+      isValid: stxAmount >= 4.0,
+      lastPriceUpdate: 0,
+    };
   }
 };

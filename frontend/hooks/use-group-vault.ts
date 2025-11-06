@@ -96,7 +96,7 @@ export const useGroupVault = () => {
   }, [isConnected, user]);
 
   /**
-   * Join an existing savings group
+   * Join an existing savings group (legacy - no deposit required)
    * @param groupId - ID of the group to join
    * @returns Promise<string> - Transaction ID
    */
@@ -132,6 +132,58 @@ export const useGroupVault = () => {
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to join group';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isConnected, user]);
+
+  /**
+   * Join an existing savings group with initial deposit
+   * @param params - Group join parameters with deposit amount
+   * @returns Promise<string> - Transaction ID
+   */
+  const joinGroupWithDeposit = useCallback(async (params: GroupDepositParams): Promise<string> => {
+    if (!isConnected || !user) {
+      throw new Error('Wallet not connected');
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const network = getStacksNetwork();
+      const amountInMicroStx = stxToMicroStx(params.amount);
+      
+      // Prepare function arguments
+      const functionArgs = [
+        uintCV(params.groupId),
+        uintCV(amountInMicroStx),
+      ];
+
+      // Import post-condition mode
+      const { PostConditionMode } = await import('@stacks/transactions');
+
+      // Use Stacks Connect to open contract call
+      return new Promise((resolve, reject) => {
+        openContractCall({
+          network,
+          contractAddress: CONTRACT_CONFIG.address,
+          contractName: CONTRACT_CONFIG.name,
+          functionName: 'join-group-with-deposit',
+          functionArgs,
+          postConditionMode: PostConditionMode.Allow,  // Allow STX transfers
+          onFinish: (data) => {
+            resolve(data.txId);
+          },
+          onCancel: () => {
+            reject(new Error('Transaction cancelled by user'));
+          },
+        });
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to join group with deposit';
       setError(errorMessage);
       throw new Error(errorMessage);
     } finally {
@@ -373,6 +425,7 @@ export const useGroupVault = () => {
     // Transaction functions
     createGroup,
     joinGroup,
+    joinGroupWithDeposit,
     startGroupLock,
     groupDeposit,
     groupWithdraw,
