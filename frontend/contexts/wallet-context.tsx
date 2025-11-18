@@ -89,7 +89,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
       
       authenticate({
         appDetails: {
-          name: 'SafeStack',
+          name: 'StackSafe',
           icon: typeof window !== 'undefined' ? window.location.origin + '/next.svg' : '/next.svg',
         },
         redirectTo: '/',

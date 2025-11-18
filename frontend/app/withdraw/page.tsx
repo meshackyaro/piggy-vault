@@ -1,190 +1,251 @@
 /**
- * Withdraw Page - STX withdrawal interface
+ * Withdraw Page - STX withdrawal interface for multiple deposits
  */
 
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useWallet } from '@/contexts/wallet-context';
-import { getUserDeposit, getUserBalance } from '@/lib/contract';
-
-interface DepositInfo {
-  amount: number;
-  depositBlock: number;
-  lockExpiry: number;
-}
+import { useMultipleDeposits, type DepositInfo } from '@/hooks/use-multiple-deposits';
+import { convertOptionToLabel } from '@/lib/lock-options';
 
 export default function WithdrawPage() {
   const { user, isConnected } = useWallet();
-  const [depositInfo, setDepositInfo] = useState<DepositInfo>({ 
-    amount: 0, 
-    depositBlock: 0,
-    lockExpiry: 0
-  });
-  const [balance, setBalance] = useState<number>(0);
+  const hookResult = useMultipleDeposits();
+  
+  // Safety check for hook initialization
+  if (!hookResult) {
+    console.error('❌ useMultipleDeposits hook not initialized');
+    return (
+      <div className="min-h-screen bg-gray-900 py-8">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center">
+            <h1 className="text-3xl font-bold text-white mb-2">Loading...</h1>
+            <p className="text-lg text-gray-600">Initializing wallet connection...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  const { 
+    getAllUserDeposits, 
+    withdrawDeposit, 
+    getTotalBalance,
+    error: hookError 
+  } = hookResult;
+  
+  const [deposits, setDeposits] = useState<DepositInfo[]>([]);
+  const [totalBalance, setTotalBalance] = useState<number>(0);
   const [currentBlock, setCurrentBlock] = useState<number>(0);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // Start as true to prevent flash
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
+  const [actionLoading, setActionLoading] = useState<{ [key: string]: boolean }>({});
+  
+  // Form states for withdrawal
+  const [withdrawAmounts, setWithdrawAmounts] = useState<{ [key: number]: string }>({});
+  const [showWithdrawForm, setShowWithdrawForm] = useState<{ [key: number]: boolean }>({});
 
-  // Reset state when wallet disconnects or changes
+
+
+  // Load user's deposits
   useEffect(() => {
-    if (!isConnected || !user) {
-      setDepositInfo({ amount: 0, depositBlock: 0, lockExpiry: 0 });
-      setBalance(0);
-      setCurrentBlock(0);
-      setError('');
-      setSuccess('');
-      setIsLoading(false);
-      return;
-    }
-  }, [isConnected, user?.address]);
+    const loadDeposits = async () => {
+      if (!user?.address) {
+        console.log('⚠️ No user connected');
+        setDeposits([]);
+        setTotalBalance(0);
+        setCurrentBlock(0);
+        setIsLoading(false);
+        return;
+      }
 
-  // Fetch user's deposit information
-  useEffect(() => {
-    if (!isConnected || !user) return;
-
-    const fetchDepositInfo = async () => {
+      console.log('🔄 Loading deposits for user:', user.address);
       setIsLoading(true);
       setError('');
       
       try {
-        const { getCurrentBlockHeight, getLockExpiry, validateContractConfig } = await import('@/lib/contract');
-        
-        if (!validateContractConfig()) {
-          throw new Error('Contract configuration is invalid.');
+        // Safety checks for hook functions
+        if (!getAllUserDeposits || !getTotalBalance) {
+          throw new Error('Hook functions not available');
         }
         
-        const [deposit, userBalance, currentBlockHeight, lockExpiry] = await Promise.all([
-          getUserDeposit(user.address),
-          getUserBalance(user.address),
+        const { getCurrentBlockHeight, getUserDeposit, isUserLocked, getRemainingLockBlocks } = await import('@/lib/contract');
+        
+        console.log('📡 Calling contract functions...');
+        const [userDeposits, balance, blockHeight] = await Promise.all([
+          getAllUserDeposits(),
+          getTotalBalance(),
           getCurrentBlockHeight(),
-          getLockExpiry(user.address),
         ]);
-
-        setDepositInfo({
-          ...deposit,
-          lockExpiry: lockExpiry ?? deposit.lockExpiry ?? 0,
+        
+        // Ensure userDeposits is always an array
+        let safeUserDeposits = Array.isArray(userDeposits) ? userDeposits : [];
+        
+        console.log('📊 Withdraw Page - Loaded Data:', {
+          depositsCount: safeUserDeposits.length,
+          deposits: safeUserDeposits,
+          balance,
+          blockHeight,
+          user: user?.address,
         });
-        setBalance(userBalance);
-        setCurrentBlock(currentBlockHeight);
+        
+        // Check for legacy deposit if no multiple deposits found
+        if (safeUserDeposits.length === 0) {
+          console.log('⚠️ No multiple deposits found, checking for legacy deposit...');
+          try {
+            const legacyDeposit = await getUserDeposit(user.address);
+            if (legacyDeposit && legacyDeposit.amount > 0) {
+              console.log('✅ Found legacy deposit:', legacyDeposit);
+              const isLocked = await isUserLocked(user.address);
+              const remainingBlocks = await getRemainingLockBlocks(user.address);
+              
+              // Convert legacy deposit to DepositInfo format
+              const legacyDepositInfo: DepositInfo = {
+                depositId: 0, // Legacy deposit has ID 0
+                amount: legacyDeposit.amount,
+                depositBlock: legacyDeposit.depositBlock,
+                lockExpiry: legacyDeposit.lockExpiry || 0,
+                lockOption: legacyDeposit.lockOption || 0,
+                withdrawn: false,
+                isLocked: isLocked,
+                remainingBlocks: remainingBlocks,
+                name: 'Legacy Deposit',
+              };
+              
+              safeUserDeposits = [legacyDepositInfo];
+              console.log('📦 Added legacy deposit to list');
+            } else {
+              console.log('⚠️ NO DEPOSITS FOUND (neither multiple nor legacy)');
+            }
+          } catch (legacyErr) {
+            console.error('❌ Error checking legacy deposit:', legacyErr);
+          }
+        }
+        
+        // Sort deposits: unlocked first, then by remaining time
+        const sortedDeposits = safeUserDeposits.sort((a, b) => {
+          if (!a || !b) return 0;
+          if (a.withdrawn !== b.withdrawn) return a.withdrawn ? 1 : -1;
+          if (a.isLocked !== b.isLocked) return a.isLocked ? 1 : -1;
+          return a.remainingBlocks - b.remainingBlocks;
+        });
+        
+        console.log('📊 Withdraw Page - After Sorting:', {
+          sortedCount: sortedDeposits.length,
+          unlocked: sortedDeposits.filter(d => d && !d.isLocked && !d.withdrawn).length,
+          locked: sortedDeposits.filter(d => d && d.isLocked && !d.withdrawn).length,
+          withdrawn: sortedDeposits.filter(d => d && d.withdrawn).length
+        });
+        
+        if (sortedDeposits.length > 0) {
+          const unlockedCount = sortedDeposits.filter(d => d && !d.isLocked && !d.withdrawn).length;
+          if (unlockedCount > 0) {
+            console.log(`✅ Found ${unlockedCount} UNLOCKED deposits ready for withdrawal!`);
+          }
+        }
+        
+        setDeposits(sortedDeposits);
+        setTotalBalance(balance);
+        setCurrentBlock(blockHeight);
+        
+        console.log('✅ State updated successfully');
       } catch (err) {
-        const { handleContractError } = await import('@/lib/contract');
-        const errorMessage = handleContractError(err);
-        setError(errorMessage);
-        console.error('Error fetching deposit info:', err);
+        console.error('❌ Error loading deposits:', err);
+        setError(`Failed to load your deposits: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        setDeposits([]);
       } finally {
         setIsLoading(false);
+        console.log('🏁 Loading complete');
       }
     };
 
-    fetchDepositInfo();
-  }, [isConnected, user?.address]); // Use user.address to detect wallet changes
+    loadDeposits();
+  }, [user?.address, getAllUserDeposits, getTotalBalance]);
 
   // Handle withdrawal
-  const handleWithdraw = async () => {
-    if (!isConnected || !user) {
-      setError('Please connect your wallet first');
+  const handleWithdraw = async (depositId: number) => {
+    const amount = withdrawAmounts[depositId];
+    if (!amount || parseFloat(amount) <= 0) {
+      setError('Please enter a valid withdrawal amount');
       return;
     }
 
-    if (!hasDeposit) {
-      setError('No deposit found to withdraw');
-      return;
-    }
-
-    if (isLocked) {
-      setError('Deposit is still locked. Please wait until the lock period expires.');
-      return;
-    }
-
-    setIsLoading(true);
+    const actionKey = `withdraw-${depositId}`;
+    setActionLoading(prev => ({ ...prev, [actionKey]: true }));
     setError('');
     setSuccess('');
 
     try {
-      const { openContractCall } = await import('@stacks/connect');
-      const { 
-        PostConditionMode, 
-        uintCV
-      } = await import('@stacks/transactions');
-      const { CONTRACT_CONFIG, getStacksNetwork, stxToMicroStx } = await import('@/lib/stacks-config');
+      console.log('🔄 Initiating withdrawal:', { depositId, amount: parseFloat(amount) });
       
-      if (!CONTRACT_CONFIG.address || !CONTRACT_CONFIG.name) {
-        throw new Error('Contract configuration is missing.');
-      }
-
-      const network = getStacksNetwork();
-      const withdrawAmountMicroStx = stxToMicroStx(depositInfo.amount);
-
-      console.log('Initiating withdrawal:', {
-        amount: depositInfo.amount,
-        amountMicroStx: withdrawAmountMicroStx,
-        contract: `${CONTRACT_CONFIG.address}.${CONTRACT_CONFIG.name}`,
-        network: network,
-        userAddress: user.address,
-        isLocked: isLocked,
-        currentBlock: currentBlock,
-        lockExpiry: depositInfo.lockExpiry
-      });
-
-      await openContractCall({
-        contractAddress: CONTRACT_CONFIG.address,
-        contractName: CONTRACT_CONFIG.name,
-        functionName: 'withdraw',
-        functionArgs: [uintCV(withdrawAmountMicroStx)], // Pass the amount to withdraw
-        postConditionMode: PostConditionMode.Allow, // Use Allow mode to avoid post-condition issues for now
-        network: network,
-        onFinish: (data) => {
-          console.log('Withdrawal transaction submitted successfully:', data);
-          setSuccess(`Withdrawal transaction submitted successfully! TX ID: ${data.txId}`);
-          setError(''); // Clear any previous errors
-          
-          // Show success message and redirect after delay
-          setTimeout(() => {
-            window.location.href = '/'; // Redirect to dashboard
-          }, 3000);
-        },
-        onCancel: () => {
-          console.log('Transaction cancelled by user');
-          setError('Transaction was cancelled by user');
-        },
-      });
-    } catch (err) {
-      console.error('Withdrawal error:', err);
-      let errorMessage = 'Failed to submit withdrawal transaction';
-      
-      if (err instanceof Error) {
-        console.error('Error details:', err.message, err.stack);
+      // Check if this is a legacy deposit (ID 0)
+      if (depositId === 0) {
+        console.log('📦 Using legacy withdrawal method');
+        const { createWithdrawTransaction } = await import('@/lib/transaction-builder');
         
-        // Handle specific error cases
-        if (err.message.includes('insufficient')) {
-          errorMessage = 'Insufficient STX balance for transaction fees. Please ensure you have enough STX for gas fees.';
-        } else if (err.message.includes('contract')) {
-          errorMessage = 'Contract not found or not accessible. Please check your network connection.';
-        } else if (err.message.includes('post condition')) {
-          errorMessage = 'Transaction post-condition failed. This may indicate a contract issue.';
-        } else if (err.message.includes('broadcast')) {
-          errorMessage = 'Transaction failed to broadcast. Please check your network connection and try again.';
-        } else if (err.message.includes('rejected')) {
-          errorMessage = 'Transaction was rejected by the network. Please ensure your deposit is unlocked and try again.';
-        } else if (err.message.includes('nonce')) {
-          errorMessage = 'Transaction nonce error. Please wait a moment and try again.';
-        } else {
-          errorMessage = `Transaction failed: ${err.message}`;
-        }
+        await createWithdrawTransaction({
+          amount: parseFloat(amount),
+          userAddress: user!.address,
+          onFinish: (data) => {
+            console.log('✅ Legacy withdrawal transaction submitted:', data.txId);
+            setSuccess(`Withdrawal successful! Transaction ID: ${data.txId}`);
+            setWithdrawAmounts(prev => ({ ...prev, [depositId]: '' }));
+            setShowWithdrawForm(prev => ({ ...prev, [depositId]: false }));
+            
+            // Refresh after delay
+            setTimeout(() => window.location.reload(), 2000);
+          },
+          onCancel: () => {
+            setError('Transaction was cancelled');
+          },
+        });
+      } else {
+        // Use multiple deposits withdrawal
+        const txId = await withdrawDeposit({
+          depositId,
+          amount: parseFloat(amount),
+        });
+
+        console.log('✅ Withdrawal transaction submitted:', txId);
+        setSuccess(`Withdrawal successful! Transaction ID: ${txId}`);
+        setWithdrawAmounts(prev => ({ ...prev, [depositId]: '' }));
+        setShowWithdrawForm(prev => ({ ...prev, [depositId]: false }));
+        
+        // Refresh deposits data after a short delay
+        setTimeout(async () => {
+          try {
+            const { getCurrentBlockHeight } = await import('@/lib/contract');
+            const [userDeposits, balance, blockHeight] = await Promise.all([
+              getAllUserDeposits(),
+              getTotalBalance(),
+              getCurrentBlockHeight(),
+            ]);
+            
+            const sortedDeposits = userDeposits.sort((a, b) => {
+              if (a.withdrawn !== b.withdrawn) return a.withdrawn ? 1 : -1;
+              if (a.isLocked !== b.isLocked) return a.isLocked ? 1 : -1;
+              return a.remainingBlocks - b.remainingBlocks;
+            });
+            
+            setDeposits(sortedDeposits);
+            setTotalBalance(balance);
+            setCurrentBlock(blockHeight);
+            console.log('✅ Deposits refreshed after withdrawal');
+          } catch (refreshErr) {
+            console.error('⚠️ Error refreshing deposits:', refreshErr);
+          }
+        }, 2000);
       }
-      
+    } catch (err) {
+      console.error('❌ Withdrawal error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to withdraw';
       setError(errorMessage);
     } finally {
-      setIsLoading(false);
+      setActionLoading(prev => ({ ...prev, [actionKey]: false }));
     }
   };
-
-  // Helper calculations
-  const hasDeposit = depositInfo.amount > 0;
-  const isLocked = currentBlock < depositInfo.lockExpiry;
-  const remainingBlocks = Math.max(0, depositInfo.lockExpiry - currentBlock);
 
   const formatTimeRemaining = (blocks: number) => {
     if (blocks <= 0) return 'Unlocked';
@@ -201,7 +262,7 @@ export default function WithdrawPage() {
   if (!isConnected) {
     return (
       <div className="min-h-screen bg-gray-900 py-8">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
             <h1 className="text-3xl font-bold text-white mb-2">Withdraw STX</h1>
             <p className="text-lg text-gray-600 dark:text-gray-300 mb-8">
@@ -217,27 +278,83 @@ export default function WithdrawPage() {
     );
   }
 
+  // Calculate statistics
+  const unlockedDeposits = deposits.filter(d => d && !d.isLocked && !d.withdrawn);
+  const lockedDeposits = deposits.filter(d => d && d.isLocked && !d.withdrawn);
+  const withdrawnDeposits = deposits.filter(d => d && d.withdrawn);
+
   return (
     <div className="min-h-screen bg-gray-900 py-8">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Withdraw STX</h1>
           <p className="text-lg text-gray-600 dark:text-gray-300">Access your unlocked deposits</p>
         </div>
 
         <div className="space-y-6">
+          {/* Summary Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-purple-50 rounded-lg p-4">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <span className="text-2xl">💰</span>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-purple-800">Total Balance</p>
+                  <p className="text-lg font-semibold text-purple-900">{totalBalance.toFixed(6)} STX</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-green-50 rounded-lg p-4">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <span className="text-2xl">🔓</span>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-green-800">Unlocked</p>
+                  <p className="text-lg font-semibold text-green-900">{unlockedDeposits.length}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-yellow-50 rounded-lg p-4">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <span className="text-2xl">🔒</span>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-yellow-800">Locked</p>
+                  <p className="text-lg font-semibold text-yellow-900">{lockedDeposits.length}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-gray-800 rounded-lg p-4">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <span className="text-2xl">✅</span>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-gray-200">Withdrawn</p>
+                  <p className="text-lg font-semibold text-white">{withdrawnDeposits.length}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Loading State */}
           {isLoading && (
             <div className="p-8 bg-gray-800 border border-gray-700 rounded-lg shadow-sm text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-400">Loading your deposit information...</p>
+              <p className="text-gray-400">Loading your deposits...</p>
             </div>
           )}
 
           {/* Error State */}
-          {error && (
+          {(error || hookError) && (
             <div className="p-4 bg-red-900/20 border border-red-800 rounded-md">
-              <p className="text-red-600 dark:text-red-400">{error}</p>
+              <p className="text-red-600 dark:text-red-400">{error || hookError}</p>
             </div>
           )}
 
@@ -248,98 +365,156 @@ export default function WithdrawPage() {
             </div>
           )}
 
-          {/* No Deposit State */}
-          {!isLoading && !hasDeposit && (
+          {/* No Deposits State */}
+          {!isLoading && deposits.length === 0 && (
             <div className="p-8 bg-gray-800 border border-gray-700 rounded-lg shadow-sm text-center">
-              <h3 className="text-xl font-semibold text-white mb-2">No Active Deposits</h3>
-              <p className="text-gray-400 mb-6">You don't have any deposits to withdraw.</p>
+              <h3 className="text-xl font-semibold text-white mb-2">No Deposits Found</h3>
+              <p className="text-gray-400 mb-6">You don&apos;t have any deposits yet. Create your first deposit to get started!</p>
               <a
                 href="/deposit"
                 className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
               >
-                Make a Deposit
+                Create Your First Deposit
               </a>
             </div>
           )}
 
-          {/* Deposit Information */}
-          {!isLoading && hasDeposit && (
-            <div className="space-y-6">
-              {/* Status Overview */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Deposit Amount */}
-                <div className="p-6 bg-gray-800 border border-gray-700 rounded-lg shadow-sm">
-                  <h3 className="text-sm font-medium text-gray-300 mb-1">Deposit Amount</h3>
-                  <p className="text-3xl font-bold text-white">{depositInfo.amount.toFixed(6)}</p>
-                  <p className="text-sm text-gray-400 mt-1">STX</p>
-                </div>
+          {/* Deposits List */}
+          {!isLoading && deposits.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-white">Your Deposits</h3>
 
-                {/* Lock Status */}
-                <div className="p-6 bg-gray-800 border border-gray-700 rounded-lg shadow-sm">
-                  <h3 className="text-sm font-medium text-gray-300 mb-1">Status</h3>
-                  <p className="text-2xl font-bold text-white">
-                    {isLocked ? '🔒 Locked' : '🔓 Unlocked'}
-                  </p>
-                </div>
-
-                {/* Time Remaining */}
-                <div className="p-6 bg-gray-800 border border-gray-700 rounded-lg shadow-sm">
-                  <h3 className="text-sm font-medium text-gray-300 mb-1">Time Remaining</h3>
-                  <p className="text-2xl font-bold text-white">
-                    {formatTimeRemaining(remainingBlocks)}
-                  </p>
-                </div>
-              </div>
-
-              {/* Withdrawal Action */}
-              <div className="p-8 bg-gray-800 border border-gray-700 rounded-lg shadow-sm text-center">
-                <h2 className="text-2xl font-bold text-white mb-4">
-                  {isLocked ? 'Deposit Still Locked' : 'Ready to Withdraw'}
-                </h2>
+              {deposits.map((deposit) => {
+                const canWithdraw = !deposit.isLocked && !deposit.withdrawn;
                 
-                <p className="text-gray-400 mb-8 max-w-2xl mx-auto">
-                  {isLocked 
-                    ? `Your deposit is still locked for ${formatTimeRemaining(remainingBlocks)}. You can withdraw once the lock period expires.`
-                    : `Your deposit is now unlocked and ready for withdrawal. You can access your ${depositInfo.amount.toFixed(6)} STX.`
-                  }
-                </p>
-                
-                <button
-                  onClick={handleWithdraw}
-                  disabled={isLocked || isLoading}
-                  className={`px-8 py-3 text-lg font-semibold rounded-md transition-colors ${
-                    isLocked || isLoading
-                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      : 'bg-green-600 text-white hover:bg-green-700'
-                  }`}
-                >
-                  {isLocked 
-                    ? `Locked for ${formatTimeRemaining(remainingBlocks)}`
-                    : isLoading 
-                      ? 'Processing Withdrawal...'
-                      : `Withdraw ${depositInfo.amount.toFixed(6)} STX`
-                  }
-                </button>
-              </div>
+                return (
+                  <div key={deposit.depositId} className="border border-gray-700 rounded-lg p-6 bg-gray-800">
+                    {/* Deposit Header */}
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <h4 className="text-lg font-semibold text-white">
+                          {deposit.name || `Deposit #${deposit.depositId}`}
+                        </h4>
+                        {deposit.name && (
+                          <p className="text-xs text-gray-400">ID: {deposit.depositId}</p>
+                        )}
+                      </div>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        deposit.withdrawn 
+                          ? 'bg-gray-700 text-gray-200'
+                          : deposit.isLocked 
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-green-100 text-green-800'
+                      }`}>
+                        {deposit.withdrawn ? 'Withdrawn' : deposit.isLocked ? 'Locked' : 'Unlocked'}
+                      </span>
+                    </div>
 
-              {/* Deposit Details */}
-              <div className="p-6 bg-gray-800 border border-gray-700 rounded-lg shadow-sm">
-                <h3 className="text-lg font-semibold text-white mb-4">Deposit Details</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
-                  <div>
-                    <span className="text-gray-400">Deposit Block:</span>
-                    <p className="font-mono text-white mt-1">#{depositInfo.depositBlock}</p>
+                    {/* Deposit Details */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Amount</p>
+                        <p className="text-lg font-semibold text-white">{deposit.amount.toFixed(6)} STX</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Lock Duration</p>
+                        <p className="text-sm text-white">{convertOptionToLabel(deposit.lockOption)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Time Remaining</p>
+                        <p className="text-sm text-white">{formatTimeRemaining(deposit.remainingBlocks)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Status</p>
+                        <p className="text-sm text-white">
+                          {deposit.withdrawn ? 'Completed' : deposit.isLocked ? 'Locked' : 'Ready'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Progress Bar for Locked Deposits */}
+                    {deposit.isLocked && !deposit.withdrawn && (
+                      <div className="mb-4">
+                        <div className="flex justify-between text-xs text-gray-500 mb-1">
+                          <span>Lock Progress</span>
+                          <span>{deposit.remainingBlocks} blocks remaining</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-yellow-500 h-2 rounded-full transition-all duration-300"
+                            style={{
+                              width: `${Math.max(0, Math.min(100, 
+                                ((deposit.lockExpiry - deposit.depositBlock - deposit.remainingBlocks) / 
+                                 (deposit.lockExpiry - deposit.depositBlock)) * 100
+                              ))}%`
+                            }}
+                          ></div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    {canWithdraw && (
+                      <div className="space-y-3">
+                        {!showWithdrawForm[deposit.depositId] ? (
+                          <button
+                            onClick={() => setShowWithdrawForm(prev => ({ ...prev, [deposit.depositId]: true }))}
+                            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                          >
+                            Withdraw Funds
+                          </button>
+                        ) : (
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <h5 className="text-sm font-medium text-white mb-3">Withdraw STX</h5>
+                            <div className="flex space-x-3">
+                              <input
+                                type="number"
+                                step="0.000001"
+                                min="0"
+                                max={deposit.amount}
+                                value={withdrawAmounts[deposit.depositId] || ''}
+                                onChange={(e) => setWithdrawAmounts(prev => ({ ...prev, [deposit.depositId]: e.target.value }))}
+                                placeholder={`Max: ${deposit.amount.toFixed(6)} STX`}
+                                className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                              />
+                              <button
+                                onClick={() => handleWithdraw(deposit.depositId)}
+                                disabled={actionLoading[`withdraw-${deposit.depositId}`] || !withdrawAmounts[deposit.depositId]}
+                                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {actionLoading[`withdraw-${deposit.depositId}`] ? 'Withdrawing...' : 'Withdraw'}
+                              </button>
+                              <button
+                                onClick={() => setShowWithdrawForm(prev => ({ ...prev, [deposit.depositId]: false }))}
+                                className="px-4 py-2 border border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Status Messages */}
+                    {deposit.withdrawn && (
+                      <div className="bg-gray-800 border border-gray-200 rounded-md p-3">
+                        <p className="text-sm text-gray-200">
+                          <strong>Withdrawn:</strong> This deposit has been fully withdrawn.
+                        </p>
+                      </div>
+                    )}
+                    
+                    {deposit.isLocked && !deposit.withdrawn && (
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                        <p className="text-sm text-yellow-800">
+                          <strong>Locked:</strong> This deposit is locked for {formatTimeRemaining(deposit.remainingBlocks)}. You can withdraw once the lock period expires.
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <span className="text-gray-400">Unlock Block:</span>
-                    <p className="font-mono text-white mt-1">#{depositInfo.lockExpiry}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-400">Current Block:</span>
-                    <p className="font-mono text-white mt-1">#{currentBlock}</p>
-                  </div>
-                </div>
-              </div>
+                );
+              })}
             </div>
           )}
         </div>

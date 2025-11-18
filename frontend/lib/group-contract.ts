@@ -1,6 +1,6 @@
 /**
  * Group Savings Contract Integration
- * Handles all group-related contract interactions for SafeStack
+ * Handles all group-related contract interactions for StackSafe
  */
 
 import { getStacksNetwork, CONTRACT_CONFIG, microStxToStx, stxToMicroStx } from './stacks-config';

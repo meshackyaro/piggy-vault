@@ -91,11 +91,10 @@ export default function GroupBrowser({ onGroupJoined }: GroupBrowserProps) {
   const filteredAndSortedGroups = useMemo(() => {
     let filtered = allGroups;
 
-    // Apply search filter
+    // Apply search filter (search by group name only - not by ID)
     if (searchTerm) {
       filtered = filtered.filter(group => 
-        group.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        group.creator.toLowerCase().includes(searchTerm.toLowerCase())
+        group.name.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -189,13 +188,13 @@ export default function GroupBrowser({ onGroupJoined }: GroupBrowserProps) {
   // Get group status info
   const getGroupStatus = (group: GroupWithUserData) => {
     if (group.isUnlocked) {
-      return { status: 'Completed', color: 'green', description: 'Savings period ended' };
+      return { status: 'Completed', color: 'green', description: 'Lock period ended - withdrawals available' };
     }
     if (group.locked) {
-      return { status: 'Active', color: 'yellow', description: 'Savings in progress' };
+      return { status: 'Active', color: 'yellow', description: 'Lock period active - deposits accepted' };
     }
     if (group.threshold && group.memberCount >= group.threshold) {
-      return { status: 'Full', color: 'red', description: 'Maximum members reached' };
+      return { status: 'Full', color: 'red', description: 'Will start automatically when full' };
     }
     return { status: 'Open', color: 'blue', description: 'Accepting new members' };
   };
@@ -229,7 +228,7 @@ export default function GroupBrowser({ onGroupJoined }: GroupBrowserProps) {
               id="search"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search by name or creator..."
+              placeholder="Search by group name..."
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
@@ -349,7 +348,7 @@ export default function GroupBrowser({ onGroupJoined }: GroupBrowserProps) {
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex-1">
                         <h3 className="text-lg font-semibold text-white mb-1">{group.name}</h3>
-                        <p className="text-sm text-gray-500">ID: {group.groupId}</p>
+                        <p className="text-sm text-gray-500">Created by: {group.creator.slice(0, 8)}...{group.creator.slice(-4)}</p>
                         {isCreator && (
                           <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800 mt-1">
                             Creator

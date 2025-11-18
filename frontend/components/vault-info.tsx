@@ -12,6 +12,7 @@ import { getUserDeposit, getUserBalance } from '@/lib/contract';
 import { formatRemainingTime, convertOptionToLabel, getUnlockTimeDescription } from '@/lib/lock-options';
 import { formatRemainingTimeAccurate, getNetworkBlockTime } from '@/lib/network-timing';
 import { useMultipleDeposits } from '@/hooks/use-multiple-deposits';
+import { useGroupVault } from '@/hooks/use-group-vault';
 import type { DepositInfo } from '@/lib/contract';
 
 // Extended deposit info to include lock option and expiry
@@ -28,9 +29,8 @@ interface VaultInfoProps {
 export default function VaultInfo({ refreshTrigger, onRefresh }: VaultInfoProps = {}) {
   const { user, isConnected } = useWallet();
   const { getTotalBalance, getActiveDepositCount } = useMultipleDeposits();
+  const { fetchAllGroupsWithUserData } = useGroupVault();
   
-  // Debug component state
-  console.log('💰 VaultInfo render:', { isConnected, userAddress: user?.address, refreshTrigger });
   const [depositInfo, setDepositInfo] = useState<ExtendedDepositInfo>({ 
     amount: 0, 
     depositBlock: 0,
@@ -39,19 +39,15 @@ export default function VaultInfo({ refreshTrigger, onRefresh }: VaultInfoProps 
   });
   const [balance, setBalance] = useState<number>(0);
   const [multipleDepositsBalance, setMultipleDepositsBalance] = useState<number>(0);
+  const [groupBalance, setGroupBalance] = useState<number>(0);
   const [activeDepositCount, setActiveDepositCount] = useState<number>(0);
+  const [groupCount, setGroupCount] = useState<number>(0);
   const [currentBlock, setCurrentBlock] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true); // Start with loading true to fetch data immediately
   const [error, setError] = useState<string>('');
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
-  // Component initialization - this runs once when component mounts for a specific wallet
-  useEffect(() => {
-    console.log('🔄 VaultInfo component mounted for user:', user?.address);
-    return () => {
-      console.log('🧹 VaultInfo component unmounting for user:', user?.address);
-    };
-  }, []); // Empty dependency array - runs once on mount
+
 
   // Fetch user's vault information when wallet is connected
   useEffect(() => {
@@ -62,42 +58,40 @@ export default function VaultInfo({ refreshTrigger, onRefresh }: VaultInfoProps 
       setError('');
       
       try {
-        console.log('🔍 Fetching vault info for user:', user.address);
-        console.log('📋 Contract config:', { 
-          address: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS, 
-          name: process.env.NEXT_PUBLIC_CONTRACT_NAME 
-        });
-        
         // Import contract functions dynamically to avoid SSR issues
         const { getCurrentBlockHeight, getLockExpiry, validateContractConfig, verifyContractExists } = await import('@/lib/contract');
         
         // Validate contract configuration before making calls
         if (!validateContractConfig()) {
-          throw new Error(`Contract configuration is invalid. Address: ${process.env.NEXT_PUBLIC_CONTRACT_ADDRESS}, Name: ${process.env.NEXT_PUBLIC_CONTRACT_NAME}`);
+          const address = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
+          const name = process.env.NEXT_PUBLIC_CONTRACT_NAME;
+          
+          if (!address || address === 'DEPLOY_CONTRACT_FIRST') {
+            throw new Error('Contract not deployed yet. Please deploy the StackSafe contract to testnet first, then update NEXT_PUBLIC_CONTRACT_ADDRESS in .env.local');
+          }
+          
+          throw new Error(`Contract configuration is invalid. Address: ${address || 'MISSING'}, Name: ${name || 'MISSING'}`);
         }
-        
-        console.log('✅ Contract config validated');
         
         // Verify contract exists on the network
         const contractExists = await verifyContractExists();
-        if (!contractExists) {
-          console.warn('⚠️ Contract may not exist on the network, but continuing...');
-        } else {
-          console.log('✅ Contract verified on network');
-        }
         
         // Fetch all data in parallel
-        console.log('📡 Fetching data from contract...');
-        const [deposit, userBalance, currentBlockHeight, lockExpiry, multipleBalance, depositCount] = await Promise.all([
+        const [deposit, userBalance, currentBlockHeight, lockExpiry, multipleBalance, depositCount, userGroups] = await Promise.all([
           getUserDeposit(user.address),
           getUserBalance(user.address),
           getCurrentBlockHeight(),
           getLockExpiry(user.address),
           getTotalBalance(),
           getActiveDepositCount(),
+          fetchAllGroupsWithUserData(),
         ]);
 
-        console.log('📊 Fetched data:', { deposit, userBalance, currentBlockHeight, lockExpiry, multipleBalance, depositCount });
+        // Calculate total group balance
+        const totalGroupBalance = userGroups
+          .filter(g => g.isMember)
+          .reduce((sum, group) => sum + group.userBalance, 0);
+        const userGroupCount = userGroups.filter(g => g.isMember).length;
 
         // Calculate lock option from remaining blocks and deposit info
         // This is an approximation since we don't store the original lock option
@@ -130,11 +124,11 @@ export default function VaultInfo({ refreshTrigger, onRefresh }: VaultInfoProps 
         });
         setBalance(userBalance);
         setMultipleDepositsBalance(multipleBalance);
+        setGroupBalance(totalGroupBalance);
         setActiveDepositCount(depositCount);
+        setGroupCount(userGroupCount);
         setCurrentBlock(currentBlockHeight);
         setLastRefresh(new Date());
-        
-        console.log('✅ Vault info updated successfully');
       } catch (err) {
         const { handleContractError } = await import('@/lib/contract');
         const errorMessage = handleContractError(err);
@@ -158,18 +152,22 @@ export default function VaultInfo({ refreshTrigger, onRefresh }: VaultInfoProps 
   const handleManualRefresh = async () => {
     if (!isConnected || !user || isLoading) return;
     
-    console.log('🔄 Manual refresh triggered');
     const fetchVaultInfo = async () => {
       setIsLoading(true);
       setError('');
       
       try {
-        console.log('🔍 Fetching vault info for user:', user.address);
-        
         const { getCurrentBlockHeight, getLockExpiry, validateContractConfig, verifyContractExists } = await import('@/lib/contract');
         
         if (!validateContractConfig()) {
-          throw new Error(`Contract configuration is invalid. Address: ${process.env.NEXT_PUBLIC_CONTRACT_ADDRESS}, Name: ${process.env.NEXT_PUBLIC_CONTRACT_NAME}`);
+          const address = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
+          const name = process.env.NEXT_PUBLIC_CONTRACT_NAME;
+          
+          if (!address || address === 'DEPLOY_CONTRACT_FIRST') {
+            throw new Error('Contract not deployed yet. Please deploy the StackSafe contract to testnet first, then update NEXT_PUBLIC_CONTRACT_ADDRESS in .env.local');
+          }
+          
+          throw new Error(`Contract configuration is invalid. Address: ${address || 'MISSING'}, Name: ${name || 'MISSING'}`);
         }
         
         // Verify contract exists
@@ -178,16 +176,21 @@ export default function VaultInfo({ refreshTrigger, onRefresh }: VaultInfoProps 
           console.warn('⚠️ Contract may not exist on the network, but continuing...');
         }
         
-        const [deposit, userBalance, currentBlockHeight, lockExpiry, multipleBalance, depositCount] = await Promise.all([
+        const [deposit, userBalance, currentBlockHeight, lockExpiry, multipleBalance, depositCount, userGroups] = await Promise.all([
           getUserDeposit(user.address),
           getUserBalance(user.address),
           getCurrentBlockHeight(),
           getLockExpiry(user.address),
           getTotalBalance(),
           getActiveDepositCount(),
+          fetchAllGroupsWithUserData(),
         ]);
 
-        console.log('📊 Manual refresh data:', { deposit, userBalance, currentBlockHeight, lockExpiry, multipleBalance, depositCount });
+        // Calculate total group balance
+        const totalGroupBalance = userGroups
+          .filter(g => g.isMember)
+          .reduce((sum, group) => sum + group.userBalance, 0);
+        const userGroupCount = userGroups.filter(g => g.isMember).length;
 
         let lockOption = 0;
         if (lockExpiry > 0 && deposit.depositBlock > 0) {
@@ -206,13 +209,13 @@ export default function VaultInfo({ refreshTrigger, onRefresh }: VaultInfoProps 
         });
         setBalance(userBalance);
         setMultipleDepositsBalance(multipleBalance);
+        setGroupBalance(totalGroupBalance);
         setActiveDepositCount(depositCount);
+        setGroupCount(userGroupCount);
         setCurrentBlock(currentBlockHeight);
         setLastRefresh(new Date());
         
         if (onRefresh) onRefresh();
-        
-        console.log('✅ Manual refresh completed successfully');
       } catch (err) {
         const { handleContractError } = await import('@/lib/contract');
         const errorMessage = handleContractError(err);
@@ -259,8 +262,8 @@ export default function VaultInfo({ refreshTrigger, onRefresh }: VaultInfoProps 
   const lockDurationLabel = depositInfo.lockOption ? convertOptionToLabel(depositInfo.lockOption) : 'Unknown';
   const remainingTimeText = formatRemainingTime(blocksRemaining);
   
-  // Calculate total balance across both systems
-  const totalBalance = balance + multipleDepositsBalance;
+  // Calculate total balance across all systems (legacy + multiple deposits + groups)
+  const totalBalance = balance + multipleDepositsBalance + groupBalance;
 
   return (
     <div className="p-6 bg-gray-800 border border-gray-700 rounded-lg shadow-sm">
@@ -302,10 +305,13 @@ export default function VaultInfo({ refreshTrigger, onRefresh }: VaultInfoProps 
             {`${totalBalance.toFixed(6)} STX`}
             {isLoading && <span className="ml-2 text-sm text-blue-600">↻</span>}
           </p>
+          <p className="text-xs text-blue-700 mt-1">
+            Personal + Group Savings
+          </p>
         </div>
         
         <div className="p-4 bg-purple-50 rounded-lg">
-          <h3 className="text-sm font-medium text-purple-800 mb-1">Multiple Deposits</h3>
+          <h3 className="text-sm font-medium text-purple-800 mb-1">Personal Deposits</h3>
           <p className="text-lg font-semibold text-purple-900">
             {`${multipleDepositsBalance.toFixed(6)} STX`}
             {isLoading && <span className="ml-2 text-sm text-purple-600">↻</span>}
@@ -315,6 +321,17 @@ export default function VaultInfo({ refreshTrigger, onRefresh }: VaultInfoProps 
           </p>
         </div>
         
+        <div className="p-4 bg-green-50 rounded-lg">
+          <h3 className="text-sm font-medium text-green-800 mb-1">Group Savings</h3>
+          <p className="text-lg font-semibold text-green-900">
+            {`${groupBalance.toFixed(6)} STX`}
+            {isLoading && <span className="ml-2 text-sm text-green-600">↻</span>}
+          </p>
+          <p className="text-xs text-green-700 mt-1">
+            {groupCount} group{groupCount !== 1 ? 's' : ''}
+          </p>
+        </div>
+
         <div className="p-4 bg-gray-800 rounded-lg">
           <h3 className="text-sm font-medium text-gray-200 mb-1">Legacy Deposit</h3>
           <p className="text-lg font-semibold text-white">
@@ -323,20 +340,6 @@ export default function VaultInfo({ refreshTrigger, onRefresh }: VaultInfoProps 
           </p>
           <p className="text-xs text-gray-300 mt-1">
             {depositInfo.lockOption ? lockDurationLabel : 'No legacy deposit'}
-          </p>
-        </div>
-
-        <div className="p-4 bg-green-50 rounded-lg">
-          <h3 className="text-sm font-medium text-green-800 mb-1">Status</h3>
-          <p className="text-lg font-semibold text-green-900">
-            {totalBalance > 0 ? (
-              multipleDepositsBalance > 0 ? 'Multiple Deposits' : (
-                depositInfo.amount > 0 ? (isUnlocked ? 'Unlocked' : 'Locked') : 'No deposits'
-              )
-            ) : (
-              'No deposits'
-            )}
-            {isLoading && <span className="ml-2 text-sm text-green-600">↻</span>}
           </p>
         </div>
       </div>
@@ -438,54 +441,11 @@ export default function VaultInfo({ refreshTrigger, onRefresh }: VaultInfoProps 
               </div>
             </div>
             
-            {/* Technical Details - Collapsible (optional for advanced users) */}
-            <details className="mt-4">
-              <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-400 select-none flex items-center gap-1">
-                <span>⚙️</span>
-                <span>Blockchain Details</span>
-              </summary>
-              <div className="mt-2 p-3 bg-gray-800 rounded text-xs text-gray-400">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <span className="font-medium">Deposit Block:</span> {depositInfo.depositBlock}
-                  </div>
-                  <div>
-                    <span className="font-medium">Current Block:</span> {currentBlock}
-                  </div>
-                  <div>
-                    <span className="font-medium">Lock Expiry Block:</span> {depositInfo.lockExpiry}
-                  </div>
-                  <div>
-                    <span className="font-medium">Blocks Remaining:</span> {blocksRemaining}
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500 mt-2 italic">
-                  * Stacks blocks are mined approximately every 10 minutes
-                </p>
-              </div>
-            </details>
-            
-            {/* Debug Information */}
-            <details className="mt-2">
-              <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-400 select-none flex items-center gap-1">
-                <span>🐛</span>
-                <span>Debug Info</span>
-              </summary>
-              <div className="mt-2 p-3 bg-red-50 rounded text-xs text-gray-400">
-                <div className="space-y-1">
-                  <div><span className="font-medium">User Address:</span> {user?.address}</div>
-                  <div><span className="font-medium">Contract:</span> {process.env.NEXT_PUBLIC_CONTRACT_ADDRESS}/{process.env.NEXT_PUBLIC_CONTRACT_NAME}</div>
-                  <div><span className="font-medium">Network:</span> {process.env.NEXT_PUBLIC_NETWORK}</div>
-                  <div><span className="font-medium">Raw Deposit:</span> {JSON.stringify(depositInfo)}</div>
-                  <div><span className="font-medium">Is Loading:</span> {isLoading.toString()}</div>
-                  <div><span className="font-medium">Error:</span> {error || 'None'}</div>
-                </div>
-              </div>
-            </details>
+
           </>
         ) : (
           <div className="text-center py-4">
-            <p className="text-gray-500 text-sm mb-3">Ready to start saving with SafeStack?</p>
+            <p className="text-gray-500 text-sm mb-3">Ready to start saving with StackSafe?</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-gray-400">
               <div className="p-3 bg-blue-50 rounded">
                 <p className="font-medium text-blue-800 mb-1">💡 Quick Start</p>
@@ -496,26 +456,6 @@ export default function VaultInfo({ refreshTrigger, onRefresh }: VaultInfoProps 
                 <p>Your funds will be safely locked for your chosen duration</p>
               </div>
             </div>
-            
-            {/* Debug Information for No Deposit */}
-            <details className="mt-4">
-              <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-400 select-none flex items-center gap-1">
-                <span>🐛</span>
-                <span>Debug Info</span>
-              </summary>
-              <div className="mt-2 p-3 bg-red-50 rounded text-xs text-gray-400">
-                <div className="space-y-1">
-                  <div><span className="font-medium">User Address:</span> {user?.address}</div>
-                  <div><span className="font-medium">Contract:</span> {process.env.NEXT_PUBLIC_CONTRACT_ADDRESS}/{process.env.NEXT_PUBLIC_CONTRACT_NAME}</div>
-                  <div><span className="font-medium">Network:</span> {process.env.NEXT_PUBLIC_NETWORK}</div>
-                  <div><span className="font-medium">Current Block:</span> {currentBlock}</div>
-                  <div><span className="font-medium">Balance:</span> {balance}</div>
-                  <div><span className="font-medium">Raw Deposit:</span> {JSON.stringify(depositInfo)}</div>
-                  <div><span className="font-medium">Is Loading:</span> {isLoading.toString()}</div>
-                  <div><span className="font-medium">Error:</span> {error || 'None'}</div>
-                </div>
-              </div>
-            </details>
           </div>
         )}
       </div>

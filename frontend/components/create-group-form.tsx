@@ -172,12 +172,32 @@ export default function CreateGroupForm({ onGroupCreated }: CreateGroupFormProps
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 disabled={isLoading}
               />
-              <p className="text-xs text-gray-500 mt-1">
-                If set, the group will automatically lock when this number of members is reached.
-                If not set, you can manually start the lock at any time.
+              <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                <p className="text-xs text-blue-800">
+                  <strong>With member limit:</strong> The group will automatically close and start the lock period when this number of members join.
+                </p>
+              </div>
+            </div>
+          )}
+          
+          {!hasThreshold && (
+            <div className="mt-2 p-3 bg-purple-50 border border-purple-200 rounded-md">
+              <p className="text-xs text-purple-800">
+                <strong>Unlimited members:</strong> You can manually close the group and start the lock period at any time from your dashboard.
               </p>
             </div>
           )}
+        </div>
+
+        {/* Lock Period Information */}
+        <div className="p-4 bg-gray-700 border border-gray-600 rounded-md">
+          <h4 className="text-sm font-medium text-white mb-2">📋 How Lock Periods Work</h4>
+          <ul className="text-xs text-gray-300 space-y-1">
+            <li>• <strong>Before Lock:</strong> Members can join but cannot deposit yet</li>
+            <li>• <strong>Lock Activation:</strong> Happens when group is full OR you manually close it</li>
+            <li>• <strong>During Lock:</strong> Members can deposit, but funds are locked for the duration</li>
+            <li>• <strong>After Lock:</strong> All members can withdraw their contributions</li>
+          </ul>
         </div>
 
         {/* Error Display */}

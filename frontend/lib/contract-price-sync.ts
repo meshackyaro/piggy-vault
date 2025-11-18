@@ -5,7 +5,13 @@
 
 import { openContractCall } from '@stacks/connect';
 import { uintCV } from '@stacks/transactions';
-import { getStacksNetwork, CONTRACT_CONFIG, stxToMicroStx } from '@/lib/stacks-config';
+import { 
+  getStacksNetwork, 
+  CONTRACT_CONFIG, 
+  stxToMicroStx,
+  isContractConfigValid,
+  getContractConfigError 
+} from '@/lib/stacks-config';
 import { getMinimumSTXAmount, fetchSTXPrice } from '@/lib/price-oracle';
 
 /**
@@ -13,6 +19,12 @@ import { getMinimumSTXAmount, fetchSTXPrice } from '@/lib/price-oracle';
  * This should be called periodically to keep the contract in sync with market prices
  */
 export async function updateContractSTXPrice(): Promise<string> {
+  // Validate contract configuration
+  if (!isContractConfigValid()) {
+    const configError = getContractConfigError();
+    throw new Error(configError || 'Contract configuration is invalid');
+  }
+
   try {
     const currentPrice = await fetchSTXPrice();
     // Convert to 6 decimal precision for contract (e.g., $0.52 -> 520000)

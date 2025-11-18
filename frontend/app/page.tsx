@@ -1,5 +1,5 @@
 /**
- * Dashboard Page - Main landing page for the SafeStack dApp
+ * Dashboard Page - Main landing page for the StackSafe dApp
  * Shows wallet connection, vault info, and quick action buttons
  */
 
@@ -9,14 +9,12 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import WalletConnect from '@/components/wallet-connect';
 import VaultInfo from '@/components/vault-info';
+import ContractNotDeployedBanner from '@/components/contract-not-deployed-banner';
 import { useWallet } from '@/contexts/wallet-context';
 
 export default function Dashboard() {
   const { isConnected, user } = useWallet();
   const [refreshKey, setRefreshKey] = useState(0);
-
-  // Debug wallet connection state
-  console.log('🏠 Dashboard render:', { isConnected, userAddress: user?.address, refreshKey });
 
   // Force refresh of vault info after transactions
   const handleRefresh = () => {
@@ -34,11 +32,14 @@ export default function Dashboard() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">SafeStack Dashboard</h1>
+        <h1 className="text-3xl font-bold text-white mb-2">StackSafe Dashboard</h1>
         <p className="text-lg text-gray-300">
           A decentralized savings vault with flexible time-based lock periods on Stacks blockchain
         </p>
       </div>
+
+      {/* Contract Deployment Warning */}
+      <ContractNotDeployedBanner />
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -52,7 +53,6 @@ export default function Dashboard() {
             <VaultInfo 
               key={user.address} // Force re-render on wallet change
               refreshTrigger={refreshKey}
-              onRefresh={() => console.log('Vault info refreshed')}
             />
           )}
         </div>

@@ -17,7 +17,7 @@ interface CreateDepositFormProps {
 }
 
 export default function CreateDepositForm({ onDepositCreated, onCancel }: CreateDepositFormProps) {
-  const { isConnected } = useWallet();
+  const { isConnected, user } = useWallet();
   const { createDeposit, error: hookError } = useMultipleDeposits();
   const { 
     stxPrice, 
@@ -82,27 +82,34 @@ export default function CreateDepositForm({ onDepositCreated, onCancel }: Create
     setSuccess('');
 
     try {
-      const txId = await createDeposit({
+      // Use the centralized transaction builder
+      const { createDepositTransaction } = await import('@/lib/transaction-builder');
+      
+      await createDepositTransaction({
         amount: depositAmount,
         lockOption: formData.lockOption,
-        name: formData.name.trim() || undefined, // Only include name if provided
-      });
+        userAddress: user?.address || '',
+        onFinish: (data) => {
+          setSuccess(`Deposit created successfully! Transaction ID: ${data.txId}`);
+          
+          // Reset form
+          setFormData({
+            amount: '',
+            lockOption: 5,
+            name: '',
+          });
 
-      setSuccess(`Deposit created successfully! Transaction ID: ${txId}`);
-      
-      // Reset form
-      setFormData({
-        amount: '',
-        lockOption: 5,
-        name: '',
+          // Notify parent component
+          if (onDepositCreated) {
+            onDepositCreated(0);
+          }
+        },
+        onCancel: () => {
+          setError('Transaction was cancelled');
+        },
       });
-
-      // Notify parent component
-      if (onDepositCreated) {
-        // We don't have the deposit ID from the transaction, so we'll use a placeholder
-        onDepositCreated(0);
-      }
     } catch (err) {
+      console.error('Create deposit error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to create deposit';
       setError(errorMessage);
     } finally {

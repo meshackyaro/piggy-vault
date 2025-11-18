@@ -14,7 +14,13 @@ import {
   noneCV,
 } from '@stacks/transactions';
 import { openContractCall } from '@stacks/connect';
-import { getStacksNetwork, CONTRACT_CONFIG, stxToMicroStx } from '@/lib/stacks-config';
+import { 
+  getStacksNetwork, 
+  CONTRACT_CONFIG, 
+  stxToMicroStx,
+  isContractConfigValid,
+  getContractConfigError 
+} from '@/lib/stacks-config';
 import { 
   getGroupInfo, 
   getAllGroups, 
@@ -55,6 +61,12 @@ export const useGroupVault = () => {
   const createGroup = useCallback(async (params: CreateGroupParams): Promise<string> => {
     if (!isConnected || !user) {
       throw new Error('Wallet not connected');
+    }
+
+    // Validate contract configuration
+    if (!isContractConfigValid()) {
+      const configError = getContractConfigError();
+      throw new Error(configError || 'Contract configuration is invalid');
     }
 
     setIsLoading(true);
@@ -105,6 +117,12 @@ export const useGroupVault = () => {
       throw new Error('Wallet not connected');
     }
 
+    // Validate contract configuration
+    if (!isContractConfigValid()) {
+      const configError = getContractConfigError();
+      throw new Error(configError || 'Contract configuration is invalid');
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -147,6 +165,12 @@ export const useGroupVault = () => {
   const joinGroupWithDeposit = useCallback(async (params: GroupDepositParams): Promise<string> => {
     if (!isConnected || !user) {
       throw new Error('Wallet not connected');
+    }
+
+    // Validate contract configuration
+    if (!isContractConfigValid()) {
+      const configError = getContractConfigError();
+      throw new Error(configError || 'Contract configuration is invalid');
     }
 
     setIsLoading(true);
@@ -201,6 +225,12 @@ export const useGroupVault = () => {
       throw new Error('Wallet not connected');
     }
 
+    // Validate contract configuration
+    if (!isContractConfigValid()) {
+      const configError = getContractConfigError();
+      throw new Error(configError || 'Contract configuration is invalid');
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -243,6 +273,12 @@ export const useGroupVault = () => {
   const groupDeposit = useCallback(async (params: GroupDepositParams): Promise<string> => {
     if (!isConnected || !user) {
       throw new Error('Wallet not connected');
+    }
+
+    // Validate contract configuration
+    if (!isContractConfigValid()) {
+      const configError = getContractConfigError();
+      throw new Error(configError || 'Contract configuration is invalid');
     }
 
     setIsLoading(true);
@@ -295,6 +331,12 @@ export const useGroupVault = () => {
   const groupWithdraw = useCallback(async (params: GroupWithdrawParams): Promise<string> => {
     if (!isConnected || !user) {
       throw new Error('Wallet not connected');
+    }
+
+    // Validate contract configuration
+    if (!isContractConfigValid()) {
+      const configError = getContractConfigError();
+      throw new Error(configError || 'Contract configuration is invalid');
     }
 
     setIsLoading(true);

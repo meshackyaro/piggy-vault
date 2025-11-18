@@ -1,5 +1,5 @@
 /**
- * Contract interaction utilities for SafeStack
+ * Contract interaction utilities for StackSafe
  * Handles all read and write operations with the updated time-based lock Clarity smart contract
  * Updated to support the new contract's time-based lock periods and enhanced functionality
  */
@@ -386,6 +386,7 @@ export const getContractSource = async (): Promise<string> => {
 /**
  * Call a read-only function on the contract
  * Generic helper for contract read operations
+ * Returns the raw Clarity Value - caller should use cvToJSON if needed
  */
 export const callReadOnlyFunction = async (params: {
   contractAddress: string;
@@ -406,7 +407,8 @@ export const callReadOnlyFunction = async (params: {
       senderAddress: params.senderAddress || CONTRACT_CONFIG.address,
     });
 
-    return cvToJSON(result);
+    // Return raw result - let caller decide how to parse it
+    return result;
   } catch (error) {
     console.error(`Error calling ${params.functionName}:`, error);
     throw error;

@@ -1,6 +1,6 @@
 /**
  * Withdraw Form Component
- * Handles STX withdrawals from SafeStack with time-based lock validation
+ * Handles STX withdrawals from StackSafe with time-based lock validation
  * Updated to support the new contract's time-based lock periods
  */
 
@@ -38,6 +38,13 @@ export default function WithdrawForm({ onWithdrawSuccess }: WithdrawFormProps) {
         
         // Validate contract configuration before making calls
         if (!validateContractConfig()) {
+          const address = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
+          
+          if (!address || address === 'DEPLOY_CONTRACT_FIRST') {
+            setError('Contract not deployed yet. Please deploy the StackSafe contract to testnet first.');
+          } else {
+            setError('Contract configuration is invalid. Please check your environment variables.');
+          }
           console.warn('Contract configuration is invalid. Using fallback data.');
           return;
         }
@@ -118,30 +125,12 @@ export default function WithdrawForm({ onWithdrawSuccess }: WithdrawFormProps) {
     setSuccess('');
 
     try {
-      // Import Stacks Connect for transaction
-      const { openContractCall } = await import('@stacks/connect');
-      const { uintCV } = await import('@stacks/transactions');
-      const { CONTRACT_CONFIG, stxToMicroStx } = await import('@/lib/stacks-config');
-
-      // Convert STX to microSTX for the contract call
-      const amountMicroStx = stxToMicroStx(withdrawAmount);
-
-      // Import post-condition mode
-      const { PostConditionMode } = await import('@stacks/transactions');
-      const { getStacksNetwork } = await import('@/lib/stacks-config');
-
-      const network = getStacksNetwork();
-
-      console.log('Setting up withdrawal with PostConditionMode.Allow for STX transfers');
-
-      // Open contract call with Stacks Connect
-      await openContractCall({
-        contractAddress: CONTRACT_CONFIG.address,
-        contractName: CONTRACT_CONFIG.name,
-        functionName: 'withdraw',
-        functionArgs: [uintCV(amountMicroStx)],
-        postConditionMode: PostConditionMode.Allow,  // Allow STX transfers without strict checking
-        network: network,
+      // Use the centralized transaction builder
+      const { createWithdrawTransaction } = await import('@/lib/transaction-builder');
+      
+      await createWithdrawTransaction({
+        amount: withdrawAmount,
+        userAddress: user.address,
         onFinish: (data) => {
           setSuccess(`Withdrawal transaction submitted! TX ID: ${data.txId}`);
           setAmount('');
@@ -152,7 +141,9 @@ export default function WithdrawForm({ onWithdrawSuccess }: WithdrawFormProps) {
         },
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to submit withdrawal transaction');
+      console.error('Withdraw error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to submit withdrawal transaction';
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }

@@ -1,6 +1,6 @@
 /**
  * Deposit Form Component
- * Handles STX deposits to SafeStack with time-based lock duration selection and $2 USD minimum enforcement
+ * Handles STX deposits to StackSafe with time-based lock duration selection and $2 USD minimum enforcement
  * Updated to support the new contract's time-based lock periods and dynamic minimum deposit validation
  */
 
@@ -89,132 +89,25 @@ export default function DepositForm({ onDepositSuccess }: DepositFormProps) {
     setSuccess('');
 
     try {
-      // Import Stacks Connect for transaction
-      const { openContractCall } = await import('@stacks/connect');
-      const { uintCV } = await import('@stacks/transactions');
-      const { CONTRACT_CONFIG, stxToMicroStx } = await import('@/lib/stacks-config');
+      // Use the centralized transaction builder
+      const { createDepositTransaction } = await import('@/lib/transaction-builder');
       
-      // Validate contract configuration
-      if (!CONTRACT_CONFIG.address || !CONTRACT_CONFIG.name) {
-        throw new Error('Contract configuration is missing. Please check your environment variables.');
-      }
-      
-      // Always verify contract exists to provide better error messages
-      const { verifyContractExists } = await import('@/lib/contract');
-      const contractExists = await verifyContractExists();
-      if (!contractExists) {
-        throw new Error(`Contract ${CONTRACT_CONFIG.address}.${CONTRACT_CONFIG.name} not found on testnet. 
-        
-This is likely because:
-1. The contract hasn't been deployed to testnet yet
-2. The contract address in .env.local is incorrect
-3. You're using a different network than expected
-
-To fix this:
-- Deploy the contract: clarinet deployments apply --testnet
-- Or use devnet: clarinet devnet start
-- Or check if the contract address is correct`);
-      }
-
-      // Validate and convert STX to microSTX for the contract call
-      const { validateStxAmount, testStxConversion } = await import('@/lib/stacks-config');
-      
-      const validation = validateStxAmount(depositAmount);
-      if (!validation.valid) {
-        throw new Error(validation.error || 'Invalid amount');
-      }
-      
-      const amountMicroStx = stxToMicroStx(depositAmount);
-      const conversionTest = testStxConversion(depositAmount);
-      
-      console.log('Amount conversion test:', conversionTest);
-      
-      if (!conversionTest.isCorrect) {
-        throw new Error(`Conversion error: ${depositAmount} STX -> ${amountMicroStx} microSTX (expected ${conversionTest.details.expectedMicroStx})`);
-      }
-      
-      // Debug logging
-      console.log('Deposit details:', {
-        depositAmount,
-        amountMicroStx,
-        amountMicroStxString: amountMicroStx.toString(),
-        selectedLockOption,
-        contractAddress: CONTRACT_CONFIG.address,
-        contractName: CONTRACT_CONFIG.name,
-        userAddress: user?.address
-      });
-      
-      // Validate amounts
-      if (amountMicroStx <= 0) {
-        throw new Error('Invalid amount: must be greater than 0');
-      }
-      
-      if (amountMicroStx > 1000000000000) { // 1 million STX limit
-        throw new Error('Amount too large: maximum 1,000,000 STX');
-      }
-
-      // Import network configuration
-      const { getStacksNetwork } = await import('@/lib/stacks-config');
-      const network = getStacksNetwork();
-      
-      console.log('Network configuration:', network);
-      console.log('User details:', {
-        userAddress: user?.address,
-        isConnected
-      });
-      console.log('Transaction parameters:', {
-        contractAddress: CONTRACT_CONFIG.address,
-        contractName: CONTRACT_CONFIG.name,
-        functionName: 'deposit',
-        functionArgs: [amountMicroStx, selectedLockOption],
-        network: network.chainId || 'unknown'
-      });
-
-      // Import post-condition mode to allow STX transfers
-      const { PostConditionMode } = await import('@stacks/transactions');
-
-      console.log('Setting up transaction with PostConditionMode.Allow to handle STX transfers');
-
-      // Open contract call with Stacks Connect
-      // Updated to include the lock option parameter and allow post-conditions for STX transfers
-      await openContractCall({
-        contractAddress: CONTRACT_CONFIG.address,
-        contractName: CONTRACT_CONFIG.name,
-        functionName: 'deposit',
-        functionArgs: [
-          uintCV(amountMicroStx),          // Amount in microSTX as number
-          uintCV(selectedLockOption)       // Lock duration option (1-13)
-        ],
-        postConditionMode: PostConditionMode.Allow,  // Allow STX transfers without strict checking
-        network: network,                   // Explicitly set network
+      await createDepositTransaction({
+        amount: depositAmount,
+        lockOption: selectedLockOption,
+        userAddress: user.address,
         onFinish: (data) => {
-          console.log('Transaction successful:', data);
           setSuccess(`Deposit transaction submitted! TX ID: ${data.txId}`);
           setAmount('');
           onDepositSuccess?.();
         },
         onCancel: () => {
-          console.log('Transaction cancelled by user');
           setError('Transaction was cancelled');
         },
       });
     } catch (err) {
       console.error('Deposit error:', err);
-      let errorMessage = 'Failed to submit deposit transaction';
-      
-      if (err instanceof Error) {
-        errorMessage = err.message;
-        
-        // Provide more specific error messages
-        if (err.message.includes('insufficient')) {
-          errorMessage = 'Insufficient STX balance. Please check your wallet balance and try again.';
-        } else if (err.message.includes('contract') || err.message.includes('not found')) {
-          errorMessage = 'Contract not found. The SafeStack contract may not be deployed to this network yet.';
-        } else if (err.message.includes('invalid')) {
-          errorMessage = 'Invalid transaction parameters. Please check the amount and try again.';
-        }
-      }
-      
+      const errorMessage = err instanceof Error ? err.message : 'Failed to submit deposit transaction';
       setError(errorMessage);
     } finally {
       setIsLoading(false);

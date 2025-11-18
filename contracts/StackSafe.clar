@@ -447,55 +447,19 @@
 )
 
 ;; Get total balance across all active deposits for a user
+;; NOTE: This function is deprecated due to Clarity fold limitations with user context
+;; Frontend should calculate total by fetching all deposits and summing amounts
 (define-read-only (get-total-user-balance (user principal))
-    (let ((deposit-ids (get deposit-ids (get-user-deposit-ids user))))
-        (fold calculate-total-balance deposit-ids u0)
-    )
-)
-
-;; Helper function for calculating total balance
-(define-private (calculate-total-balance
-        (deposit-id uint)
-        (total uint)
-    )
-    (let ((deposit-data (map-get? user-deposits {
-            user: tx-sender, ;; Note: This limits function to current user context
-            deposit-id: deposit-id,
-        })))
-        (match deposit-data
-            data (if (get withdrawn data)
-                total
-                (+ total (get amount data))
-            )
-            total
-        )
-    )
+    u0
+    ;; Returns 0 - use frontend calculation instead
 )
 
 ;; Get count of active deposits for a user
+;; NOTE: This function is deprecated due to Clarity fold limitations with user context
+;; Frontend should calculate count by fetching all deposits and filtering
 (define-read-only (get-active-deposit-count (user principal))
-    (let ((deposit-ids (get deposit-ids (get-user-deposit-ids user))))
-        (fold count-active-deposits deposit-ids u0)
-    )
-)
-
-;; Helper function for counting active deposits
-(define-private (count-active-deposits
-        (deposit-id uint)
-        (count uint)
-    )
-    (let ((deposit-data (map-get? user-deposits {
-            user: tx-sender, ;; Note: This limits function to current user context
-            deposit-id: deposit-id,
-        })))
-        (match deposit-data
-            data (if (get withdrawn data)
-                count
-                (+ count u1)
-            )
-            count
-        )
-    )
+    u0
+    ;; Returns 0 - use frontend calculation instead
 )
 
 ;; Check if a specific deposit is locked
@@ -542,6 +506,14 @@
 ;; Get current deposit counter (total deposits created)
 (define-read-only (get-deposit-counter)
     (var-get deposit-counter)
+)
+
+;; Get all unlocked deposits for a user (ready for withdrawal)
+;; NOTE: This function is deprecated due to Clarity filter limitations with user context
+;; Frontend should fetch all deposits and filter by isLocked status
+(define-read-only (get-user-unlocked-deposits (user principal))
+    (list)
+    ;; Returns empty list - use frontend filtering instead
 )
 
 ;; =============================================================================
@@ -876,8 +848,9 @@
     )
 )
 
-;; Manually start the lock for a group (creator only, for groups without threshold)
-;; @param group-id: ID of the group to start
+;; Manually start the lock for a group (creator only)
+;; @param group-id: ID of the group to start/close
+;; This allows the creator to close the group at any time, even before threshold is reached
 (define-public (start-group-lock (group-id uint))
     (let (
             (starter tx-sender)
@@ -891,10 +864,7 @@
         ;; Group must not be locked already
         (asserts! (not (get locked group-data)) (err ERR-GROUP-LOCKED))
 
-        ;; Group must not have a threshold (threshold groups auto-lock)
-        (asserts! (is-none (get threshold group-data)) (err ERR-UNAUTHORIZED))
-
-        ;; Start the lock
+        ;; Start the lock (works for both threshold and non-threshold groups)
         (map-set savings-groups { group-id: group-id }
             (merge group-data {
                 locked: true,

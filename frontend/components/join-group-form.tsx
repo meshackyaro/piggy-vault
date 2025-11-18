@@ -215,7 +215,7 @@ export default function JoinGroupForm({ onGroupJoined }: JoinGroupFormProps) {
                   <div className="flex justify-between items-start mb-3">
                     <div>
                       <h3 className="text-lg font-semibold text-white">{group.name}</h3>
-                      <p className="text-sm text-gray-500">Group ID: {group.groupId}</p>
+                      <p className="text-sm text-gray-500">Created by: {group.creator.slice(0, 8)}...{group.creator.slice(-4)}</p>
                     </div>
                     <div className="text-right">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">

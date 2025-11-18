@@ -1,6 +1,6 @@
 /**
  * Stacks Network Configuration
- * Centralizes network settings and contract information for the SafeStack dApp
+ * Centralizes network settings and contract information for the StackSafe dApp
  */
 
 import { 
@@ -13,27 +13,121 @@ import {
 export const getStacksNetwork = () => {
   const networkType = process.env.NEXT_PUBLIC_NETWORK || 'testnet';
   
+  let network;
+  
   switch (networkType) {
     case 'mainnet':
-      return STACKS_MAINNET;
+      network = STACKS_MAINNET;
+      break;
     case 'testnet':
-      return STACKS_TESTNET;
+      network = STACKS_TESTNET;
+      break;
     case 'devnet':
       // For devnet, we'll use a custom configuration
-      return {
+      network = {
         ...STACKS_DEVNET,
         coreApiUrl: process.env.NEXT_PUBLIC_STACKS_API_URL || 'http://localhost:3999',
       };
+      break;
     default:
-      return STACKS_TESTNET;
+      network = STACKS_TESTNET;
   }
+  
+  // Ensure the network object has all required properties
+  if (!network) {
+    console.error('Failed to initialize network configuration');
+    return STACKS_TESTNET;
+  }
+  
+  // Log network configuration for debugging
+  console.log('🌐 Network configuration:', {
+    type: networkType,
+    chainId: network.chainId || 'unknown',
+    coreApiUrl: 'coreApiUrl' in network ? network.coreApiUrl : 'url' in network ? network.url : 'unknown'
+  });
+  
+  return network;
 };
 
 // Contract configuration - loaded from environment variables
 export const CONTRACT_CONFIG = {
-  address: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS!,
-  name: process.env.NEXT_PUBLIC_CONTRACT_NAME!,
+  address: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || '',
+  name: process.env.NEXT_PUBLIC_CONTRACT_NAME || 'StackSafe',
 } as const;
+
+/**
+ * Validate that contract configuration is properly set
+ * @returns boolean indicating if configuration is valid for transactions
+ */
+export const isContractConfigValid = (): boolean => {
+  const address = CONTRACT_CONFIG.address;
+  const name = CONTRACT_CONFIG.name;
+  
+  // Check if address exists and is not empty
+  if (!address || address === '' || address === 'DEPLOY_CONTRACT_FIRST') {
+    return false;
+  }
+  
+  // Check if address has valid Stacks format (ST for testnet, SP for mainnet)
+  if (!address.startsWith('ST') && !address.startsWith('SP')) {
+    return false;
+  }
+  
+  // Check if address has reasonable length (Stacks addresses are typically 40-42 chars)
+  if (address.length < 38 || address.length > 45) {
+    return false;
+  }
+  
+  // Check if contract name exists
+  if (!name || name === '') {
+    return false;
+  }
+  
+  return true;
+};
+
+/**
+ * Get contract configuration validation error message
+ * @returns Error message if config is invalid, null otherwise
+ */
+export const getContractConfigError = (): string | null => {
+  if (!CONTRACT_CONFIG.address || CONTRACT_CONFIG.address === '') {
+    return 'Contract address is not set. Please deploy the contract and update NEXT_PUBLIC_CONTRACT_ADDRESS in .env.local';
+  }
+  
+  if (CONTRACT_CONFIG.address === 'DEPLOY_CONTRACT_FIRST') {
+    return 'Contract not deployed yet. Please deploy the StackSafe contract to testnet using "clarinet deployments apply --testnet", then update NEXT_PUBLIC_CONTRACT_ADDRESS in .env.local with the deployed address';
+  }
+  
+  if (!CONTRACT_CONFIG.address.startsWith('ST') && !CONTRACT_CONFIG.address.startsWith('SP')) {
+    return `Invalid contract address format: "${CONTRACT_CONFIG.address}". Stacks addresses must start with ST (testnet) or SP (mainnet). Please check your .env.local file.`;
+  }
+  
+  if (CONTRACT_CONFIG.address.length < 38 || CONTRACT_CONFIG.address.length > 45) {
+    return `Invalid contract address length: "${CONTRACT_CONFIG.address}". Stacks addresses should be 40-42 characters long. Please verify the address in your .env.local file.`;
+  }
+  
+  if (!CONTRACT_CONFIG.name || CONTRACT_CONFIG.name === '') {
+    return 'Contract name is not set. Please update NEXT_PUBLIC_CONTRACT_NAME in .env.local';
+  }
+  
+  return null;
+};
+
+/**
+ * Get detailed contract configuration info for debugging
+ * @returns Object with configuration details and validation status
+ */
+export const getContractConfigInfo = () => {
+  return {
+    address: CONTRACT_CONFIG.address,
+    name: CONTRACT_CONFIG.name,
+    isValid: isContractConfigValid(),
+    error: getContractConfigError(),
+    network: process.env.NEXT_PUBLIC_NETWORK || 'testnet',
+    apiUrl: process.env.NEXT_PUBLIC_STACKS_API_URL || 'https://api.testnet.hiro.so',
+  };
+};
 
 // Error codes from the updated Clarity contract
 export const CONTRACT_ERRORS = {

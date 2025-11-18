@@ -54,7 +54,7 @@ export default function GroupDashboard({ onCreateGroup, onJoinGroup }: GroupDash
   // Get lock duration options for display
   const lockOptions = getLockDurationOptions();
 
-  // Load user's groups (only groups where user is a member)
+  // Load user's groups (groups where user is a member OR creator)
   useEffect(() => {
     const loadGroups = async () => {
       if (!user) {
@@ -66,7 +66,7 @@ export default function GroupDashboard({ onCreateGroup, onJoinGroup }: GroupDash
       setIsLoading(true);
       try {
         const allGroups = await fetchAllGroupsWithUserData();
-        // Filter to only show groups where user is a member
+        // Show groups where user is a member (includes groups they created)
         const userGroups = allGroups.filter(group => group.isMember);
         setGroups(userGroups);
       } catch (err) {
@@ -379,7 +379,7 @@ export default function GroupDashboard({ onCreateGroup, onJoinGroup }: GroupDash
                     <div className="flex justify-between items-start mb-4">
                       <div>
                         <h3 className="text-xl font-semibold text-white">{group.name}</h3>
-                        <p className="text-sm text-gray-500">Group ID: {group.groupId}</p>
+                        <p className="text-sm text-gray-500">Created by: {group.creator.slice(0, 8)}...{group.creator.slice(-4)}</p>
                         {isCreator && (
                           <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 mt-1">
                             Creator
@@ -445,26 +445,45 @@ export default function GroupDashboard({ onCreateGroup, onJoinGroup }: GroupDash
 
                     {/* Actions */}
                     <div className="space-y-4">
-                      {/* Start Lock Button (Creator Only) */}
+                      {/* Close Group / Start Lock Button (Creator Only for Unlimited Groups) */}
                       {canStartLock && (
-                        <div>
-                          <button
-                            onClick={() => handleStartLock(group.groupId)}
-                            disabled={actionLoading[`start-lock-${group.groupId}`]}
-                            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {actionLoading[`start-lock-${group.groupId}`] ? (
-                              <div className="flex items-center">
-                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                                Starting Lock...
-                              </div>
-                            ) : (
-                              'Start Group Lock'
-                            )}
-                          </button>
-                          <p className="text-xs text-gray-500 mt-1">
-                            As the creator, you can start the lock period manually for this unlimited group.
-                          </p>
+                        <div className="bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-300 rounded-lg p-5 shadow-md">
+                          <div className="flex items-start">
+                            <div className="flex-shrink-0">
+                              <span className="text-3xl">🔒</span>
+                            </div>
+                            <div className="ml-4 flex-1">
+                              <h4 className="text-base font-bold text-green-900 mb-2">⚡ Ready to Close & Activate Group?</h4>
+                              <p className="text-sm text-green-800 mb-3 leading-relaxed">
+                                <strong>As the creator</strong>, you can manually close this unlimited group and start the lock period at any time.
+                                <br />
+                                <strong>What happens when you close:</strong>
+                              </p>
+                              <ul className="text-sm text-green-800 mb-4 space-y-1 ml-4">
+                                <li>✓ No new members can join</li>
+                                <li>✓ Lock period of <strong>{getLockDurationLabel(group.duration)}</strong> begins immediately</li>
+                                <li>✓ All members can start depositing funds</li>
+                                <li>✓ Funds will be locked until the period expires</li>
+                              </ul>
+                              <button
+                                onClick={() => handleStartLock(group.groupId)}
+                                disabled={actionLoading[`start-lock-${group.groupId}`]}
+                                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-lg text-base font-bold text-white bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105"
+                              >
+                                {actionLoading[`start-lock-${group.groupId}`] ? (
+                                  <div className="flex items-center">
+                                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                                    Closing Group & Starting Lock...
+                                  </div>
+                                ) : (
+                                  <>
+                                    <span className="mr-2">🔒</span>
+                                    Close Group & Start Lock Period Now
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       )}
 
@@ -530,29 +549,47 @@ export default function GroupDashboard({ onCreateGroup, onJoinGroup }: GroupDash
                       {/* Status Messages */}
                       {!group.locked && !canStartLock && (
                         <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
-                          <p className="text-sm text-blue-800">
-                            <strong>Waiting to Start:</strong> {group.threshold 
-                              ? `Group will auto-start when it reaches ${group.threshold} members (currently ${group.memberCount}).`
-                              : 'Waiting for the creator to manually start the group.'
-                            }
-                          </p>
+                          <div className="flex items-start">
+                            <span className="text-xl mr-2">⏳</span>
+                            <div>
+                              <p className="text-sm font-medium text-blue-800 mb-1">Waiting to Start</p>
+                              <p className="text-sm text-blue-700">
+                                {group.threshold 
+                                  ? `This group will automatically close and start the lock period when it reaches ${group.threshold} members. Currently at ${group.memberCount}/${group.threshold} members.`
+                                  : 'This unlimited group is waiting for the creator to manually close it and start the lock period.'
+                                }
+                              </p>
+                            </div>
+                          </div>
                         </div>
                       )}
                       
                       {group.locked && !group.isUnlocked && (
                         <div className="bg-green-50 border border-green-200 rounded-md p-3">
-                          <p className="text-sm text-green-800">
-                            <strong>Active Savings Period:</strong> The group is now active! You can make deposits to build your savings. 
-                            Funds will be locked until {formatTimeRemaining(group.remainingBlocks)} remaining.
-                          </p>
+                          <div className="flex items-start">
+                            <span className="text-xl mr-2">✅</span>
+                            <div>
+                              <p className="text-sm font-medium text-green-800 mb-1">Active Savings Period</p>
+                              <p className="text-sm text-green-700">
+                                The group is now closed and the lock period is active! You can continue making deposits to build your savings. 
+                                All funds will remain locked for {formatTimeRemaining(group.remainingBlocks)}.
+                              </p>
+                            </div>
+                          </div>
                         </div>
                       )}
 
                       {group.isUnlocked && (
                         <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
-                          <p className="text-sm text-yellow-800">
-                            <strong>Lock Expired:</strong> The savings period has ended! You can now withdraw your contributions.
-                          </p>
+                          <div className="flex items-start">
+                            <span className="text-xl mr-2">🎉</span>
+                            <div>
+                              <p className="text-sm font-medium text-yellow-800 mb-1">Lock Period Completed</p>
+                              <p className="text-sm text-yellow-700">
+                                The savings period has ended! You can now withdraw your contributions at any time.
+                              </p>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
